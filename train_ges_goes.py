@@ -158,15 +158,28 @@ class Trainer:
 
         # Load training and validation data
         print(f"[world_rank: {self.params.world_rank}] Begin data loading \n") #may need to be changed to rank 0 only
-        (self.train_data_loader, self.train_dataset, self.train_sampler) = get_data_loader(self.params,
-                                                                                           self.params.train_data_path,
-                                                                                           dist.is_initialized(),
-                                                                                           train=True)
-        
-        (self.valid_data_loader, self.valid_dataset, self.valid_sampler) = get_data_loader(self.params,
-                                                                                           self.params.valid_data_path,
-                                                                                           dist.is_initialized(),
-                                                                                           train=True)
+        if getattr(self.params, "data_source", "netcdf") == "ocelot3": # see docs/OCELOT3_ADAPTER.md
+            from utils.dataloader_ocelot3_parquet import get_data_loader_ocelot3
+            (self.train_data_loader, self.train_dataset, self.train_sampler) = get_data_loader_ocelot3(self.params,
+                                                                                                       (self.params.ocelot3_train_start_date, self.params.ocelot3_train_end_date),
+                                                                                                       dist.is_initialized(),
+                                                                                                       train=True,
+                                                                                                       fractional=True)
+
+            (self.valid_data_loader, self.valid_dataset, self.valid_sampler) = get_data_loader_ocelot3(self.params,
+                                                                                                       (self.params.ocelot3_valid_start_date, self.params.ocelot3_valid_end_date),
+                                                                                                       dist.is_initialized(),
+                                                                                                       train=True)
+        else:
+            (self.train_data_loader, self.train_dataset, self.train_sampler) = get_data_loader(self.params,
+                                                                                               self.params.train_data_path,
+                                                                                               dist.is_initialized(),
+                                                                                               train=True)
+
+            (self.valid_data_loader, self.valid_dataset, self.valid_sampler) = get_data_loader(self.params,
+                                                                                               self.params.valid_data_path,
+                                                                                               dist.is_initialized(),
+                                                                                               train=True)
         print(f"[world_rank: {self.params.world_rank}] Data loaded \n") #may need to be changed to rank 0 only or removed
 
         # Set up optimizer
@@ -624,7 +637,23 @@ if __name__ == "__main__":
     params["world_rank"] = dist.get_rank() 
 
     set_random_seed(params.seed)
-    
+
+    # Ocelot3 Parquet data source: the model is sized from img_size_x/y and in_chans at construction,
+    # so these must match the Ocelot3 grid and channel count before Trainer builds it.
+    if getattr(params, "data_source", "netcdf") == "ocelot3":
+        from utils.dataloader_ocelot3_parquet import infer_grid_shape, ocelot3_in_chans, ocelot3_pad_multiple
+
+        missing = [key for key in ("ocelot3_data_dir", "ocelot3_static_data_dir",
+                                   "ocelot3_train_start_date", "ocelot3_train_end_date",
+                                   "ocelot3_valid_start_date", "ocelot3_valid_end_date")
+                   if getattr(params, key, None) is None]
+        if missing:
+            raise ValueError(f"data_source=ocelot3 requires {missing} to be set")
+
+        params["img_size_y"], params["img_size_x"] = infer_grid_shape(params.ocelot3_static_data_dir,
+                                                                      pad_multiple=ocelot3_pad_multiple(params))
+        params["in_chans"] = ocelot3_in_chans(params)
+
     if params.log_to_screen and params.world_rank == 0:
         print("------ PARAMETER VALUES ------")
         for key, val in params.items():

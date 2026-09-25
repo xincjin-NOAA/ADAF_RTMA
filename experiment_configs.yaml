@@ -1,0 +1,262 @@
+# ADAF-RTMA experiment definitions for submit_experiments_from_yaml.sh.
+#
+#   ./submit_experiments_from_yaml.sh                         # submit every experiment below
+#   ./submit_experiments_from_yaml.sh - smoke --dry-run       # write job scripts for "*smoke*" only
+#   ./submit_experiments_from_yaml.sh - goes_base --version v2
+#   ./submit_experiments_from_yaml.sh - ocelot3 --set max_epochs=1
+#
+# `defaults:` applies to every experiment; each entry under `experiments:` overrides only
+# the keys it lists. There are two kinds of key:
+#   * SUBMIT options (SLURM resources, environment, run_dir, resume): consumed by the
+#     submitter. All of them are listed, with their defaults, in the first half of `defaults:`.
+#   * TRAINING options: every other key is passed to the training script as `--key value`.
+#     Any key in the experiment's `config_filepath` YAML is valid, and unknown keys are
+#     rejected before submitting. The full list is in the second half of `defaults:`
+#     (commented out; uncomment to override the config file's value).
+# Full reference: docs/SUBMITTING_JOBS.md.
+#
+# Each experiment writes to run_dir (default training_runs/<experiment name>): SLURM logs
+# (log_<jobid>.out/.err), the generated job script, ckpt.tar and best_ckpt.tar. The
+# submitter refuses to overwrite an existing ckpt.tar unless resume: true, --version or --force.
+
+defaults:
+  # ==========================================================================
+  # SUBMIT OPTIONS (value shown = built-in default unless noted)
+  # ==========================================================================
+  # description: ""                  # printed at submit time and in the job script
+  # script: train_ges_goes.py        # training entry point (train.py = no-satellite copy)
+
+  # --- SLURM resources ---
+  account: gpu-emc-ai
+  partition: u1-h100
+  qos: gpu                           # set to null to omit --qos
+  nodes: 1                           # >1 = multi-node DDP (torchrun c10d rendezvous)
+  gpus_per_node: 2                   # torchrun ranks per node; also --gres=gpu:N
+  cpus_per_task: 24                  # per node (one launcher task per node)
+  # mem: "0"                         # "0" = all of the node's memory
+  time: "04:00:00"                   # --debug overrides to 00:30:00
+  # extra_sbatch: []                 # raw sbatch options, e.g. ["--exclusive", "--mail-type=END"]
+
+  # --- environment ---
+  env_setup:                         # shell lines run at the start of the job, in order
+    - module load python
+    - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
+    - conda activate test_adaf_rtma
+  # python: python                   # interpreter after env_setup; ptxas is taken from its bin dir
+  env_vars:                          # exported in the job
+    OMP_NUM_THREADS: 2
+    MKL_NUM_THREADS: 2
+    TORCHINDUCTOR_COMPILE_THREADS: 8 # inductor compiles one worker per CPU per rank otherwise
+  # stage_ptxas: true                # stage ptxas + Triton/Inductor caches on node-local /tmp
+
+  # --- outputs / resume ---
+  # run_dir: training_runs/{name}    # {name} = experiment name; --version V appends /V
+  # resume: false                    # true = --resuming True, resume_checkpoint_path defaults
+  #                                  # to <run_dir>/ckpt.tar. max_epochs must exceed the
+  #                                  # checkpoint's epoch (training continues from it).
+
+  # ==========================================================================
+  # TRAINING OPTIONS -- forwarded as --key value. Values below are the ones in
+  # config/params_lowres_ges_goes.yaml, so leaving them commented changes nothing.
+  # (no-op) = declared in the config but not read by train_ges_goes.py.
+  # ==========================================================================
+  config_filepath: ./config/params_lowres_ges_goes.yaml   # base config every override applies to
+
+  # --- training ---
+  # max_epochs: 999
+  # batch_size: 2                    # per GPU
+  # num_data_workers: 5
+  # save_checkpoint: true
+  # save_model_freq: 1               # epochs between ckpt.tar saves
+  # valid_frequency: 1               # epochs between validation passes
+  # optimizer_type: AdamW            # Adam | AdamW
+  # scheduler: ReduceLROnPlateau     # ReduceLROnPlateau | CosineAnnealingLR | anything else = none
+  # scheduler_patience: 10
+  # lr_reduce_factor: 0.5
+  # lr: 7.0e-4
+  # accum_steps: 1                   # (no-op)
+  # valid_max_files: 1200            # (no-op)
+  # heldout_metric_source: metar     # (no-op)
+  # weight_decay: 0.01               # (no-op) AdamW uses torch's default
+  # warmup_iters: 2000               # (no-op)
+  # grad_clip: 1.0                   # (no-op)
+
+  # --- DDP / performance ---
+  # prefetch_factor: 4
+  # non_blocking: true
+  # ddp_find_unused_parameters: false
+  # ddp_static_graph: false
+  # ddp_broadcast_buffers: false
+  # tf32: true
+  # amp_dtype: bfloat16              # bfloat16 | float16
+  # enable_amp: true
+  # channels_last: true
+  # compile_model: true              # torch.compile; needs ptxas (stage_ptxas)
+  # compile_loss: false              # (no-op)
+  # localsgd_h: 0                    # Post-Local-SGD: average weights every H steps (0 = off)
+  # localsgd_warmup: 0               # plain DDP steps before Local-SGD starts
+  # sync_epoch_timing: true
+  # train_sample_fraction: 1.0       # fraction of the training set seen per epoch
+
+  # --- data (NetCDF path) ---
+  # data_source: netcdf              # only in params_lowres_ocelot3.yaml; see ocelot3_* below
+  # train_data_path: /scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/train_data
+  # valid_data_path: /scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/valid_data
+  # data_path: ...                   # (no-op)
+  # test_data_path: ...              # (no-op)
+  # inp_pred_vars: [rtma_ges_q, rtma_ges_t, rtma_ges_u10, rtma_ges_v10]
+  # inp_obs_vars: [sta_q, sta_t, sta_u10, sta_v10]
+  # inp_sat_vars: [goes_channel_02, goes_channel_07, goes_channel_10, goes_channel_14]
+  # field_tar_vars: [rtma_anl_q, rtma_anl_t, rtma_anl_u10, rtma_anl_v10]
+  # target_vars: [q, t, u10, v10]
+  # obs_time_window: 3
+
+  # --- checkpoints (default into run_dir; set only to put them elsewhere) ---
+  # checkpoint_path: <run_dir>/ckpt.tar
+  # best_checkpoint_path: <run_dir>/best_ckpt.tar
+  # resume_checkpoint_path: <run_dir>/ckpt.tar   # used when resume: true
+
+  # --- model architecture ---
+  # arch: lowres                     # lowres (LowResEncDec) | flat (EncDec)
+  # in_chans: 29                     # 4 bg + 4*obs_time_window obs + 4*obs_time_window sat + 1 topo
+  # out_chans: 4
+  # img_size_x: 2345
+  # img_size_y: 1597
+  # upscale: 1
+  # multiscale: false
+  # downscale: 4                     # lowres: 2 | 4 | 8
+  # stem_dims: [96, 128]             # lowres: log2(downscale) entries
+  # body_dim: 192
+  # depths: [4, 4]
+  # num_heads: [6, 6]
+  # window_size: 12
+  # stem_norm: layer
+  # layer_scale_init: 1.0e-4
+  # head_dims: [96, 96]
+  # num_feat: 96
+  # patch_size: 1
+  # drop_rate: 0.1
+  # drop_path_rate: 0.1
+  # attn_drop_rate: 0.1
+  # ape: false
+  # patch_norm: true
+  # use_checkpoint: false            # activation checkpointing (saves memory, costs time)
+  # resi_connection: 1conv
+  # qkv_bias: true
+  # qk_scale: None
+  # img_range: 1.0
+  # embed_dim: 64
+  # mlp_ratio: 2
+  # upsampler: pixelshuffle          # (no-op)
+
+  # --- training specifics ---
+  # target: analysis_obs
+  # hold_out_obs: true
+  # hold_out_obs_ratio: 0.1
+  # obs_mask_seed: 1234              # 0 = new random hold-out every sample
+  # learn_residual: true
+  # gpu_assemble: true               # must stay true (the CPU-assembly path is broken)
+  # seed: 0
+  # train_obs_source: metar
+  # log_to_screen: true
+  # hold_out_ratio_min: 0.05         # (no-op)
+  # hold_out_ratio_max: 0.30         # (no-op)
+  # hold_out_block_prob: 0.3         # (no-op)
+  # hold_out_block_min: 64           # (no-op)
+  # hold_out_block_max: 192          # (no-op)
+  # heldout_loss_weight: 0.3         # (no-op)
+  # heldout_loss_source: all         # (no-op)
+  # loss_channel_weights: [1.0, 1.0, 1.0, 1.0]  # (no-op)
+  # norm_type: variable_wise_ignore_extreme     # (no-op)
+  # normalization: minmax_ignore_extreme        # (no-op)
+
+  # --- Ocelot3 Parquet data source (config_filepath: ./config/params_lowres_ocelot3.yaml) ---
+  # ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+  # ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
+  # ocelot3_train_start_date: "2022-02-01"   # each start/end pair within one year
+  # ocelot3_train_end_date: "2022-02-20"
+  # ocelot3_valid_start_date: "2022-02-21"
+  # ocelot3_valid_end_date: "2022-02-28"
+  # ocelot3_delta_time: 1            # hours between bins
+  # ocelot3_pad_multiple: None       # None = auto (1 for lowres, patch_size*window_size for flat)
+
+experiments:
+
+  # ==========================================================================
+  # Smoke tests: 1 epoch, short time limit. Check the pipeline end to end.
+  #   ./submit_experiments_from_yaml.sh - smoke
+  # ==========================================================================
+
+  goes_smoke:
+    description: "NetCDF+GOES pipeline smoke test: 1 GPU, 1 epoch, 5% of the training set"
+    time: "00:30:00"
+    gpus_per_node: 1
+    max_epochs: 1
+    valid_frequency: 1
+    train_sample_fraction: 0.05
+
+  ocelot3_smoke:
+    description: "Ocelot3 Parquet pipeline smoke test: 1 GPU, 1 epoch, 2-day train / 1-day valid"
+    config_filepath: ./config/params_lowres_ocelot3.yaml
+    time: "00:30:00"
+    gpus_per_node: 1
+    max_epochs: 1
+    batch_size: 1
+    ocelot3_train_start_date: "2022-02-01"
+    ocelot3_train_end_date: "2022-02-02"
+    ocelot3_valid_start_date: "2022-02-03"
+    ocelot3_valid_end_date: "2022-02-03"
+
+  # ==========================================================================
+  # Full training runs
+  # ==========================================================================
+
+  goes_base:
+    description: "Baseline LowResEncDec on NetCDF+GOES (settings of train_launcher_sbatch_ges_goes.sh)"
+    nodes: 2
+    gpus_per_node: 2
+    time: "08:00:00"
+    max_epochs: 500
+    valid_frequency: 10
+    localsgd_h: 50
+    target: analysis_obs
+    train_sample_fraction: 0.5
+
+  goes_base_resume:
+    description: "Continue goes_base from its ckpt.tar (settings of train_resume_launcher_ges_goes_sbatch.sh)"
+    run_dir: training_runs/goes_base
+    resume: true
+    nodes: 2
+    gpus_per_node: 2
+    time: "08:00:00"
+    max_epochs: 1000
+    valid_frequency: 10
+    localsgd_h: 50
+    train_sample_fraction: 0.5
+    lr: 1.0e-4
+    scheduler_patience: 25
+
+  ocelot3_base:
+    description: "LowResEncDec on Ocelot3 urma_ok Parquet, Feb-Mar 2022"
+    config_filepath: ./config/params_lowres_ocelot3.yaml
+    gpus_per_node: 2
+    time: "04:00:00"
+    max_epochs: 200
+    valid_frequency: 5
+    ocelot3_train_start_date: "2022-02-01"
+    ocelot3_train_end_date: "2022-03-31"
+    ocelot3_valid_start_date: "2022-04-01"
+    ocelot3_valid_end_date: "2022-04-07"
+
+  ocelot3_no_residual:
+    description: "ocelot3_base without learn_residual"
+    config_filepath: ./config/params_lowres_ocelot3.yaml
+    gpus_per_node: 2
+    time: "04:00:00"
+    max_epochs: 200
+    valid_frequency: 5
+    learn_residual: false
+    ocelot3_train_start_date: "2022-02-01"
+    ocelot3_train_end_date: "2022-03-31"
+    ocelot3_valid_start_date: "2022-04-01"
+    ocelot3_valid_end_date: "2022-04-07"

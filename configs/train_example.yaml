@@ -1,0 +1,37 @@
+# Single-run config for submit_train.sh (NetCDF + GOES data).
+#
+#   ./submit_train.sh configs/train_example.yaml
+#   ./submit_train.sh configs/train_example.yaml max_epochs=1 time=00:20:00 --dry-run
+#
+# Same keys as an experiment in experiment_configs.yaml (see that file or
+# docs/SUBMITTING_JOBS.md for every option): submit options (SLURM, environment,
+# run_dir, resume) plus any key of config_filepath, forwarded as --key value.
+# Outputs go to training_runs/<name>/.
+
+name: goes_lowres
+description: "LowResEncDec on NetCDF+GOES"
+
+# --- SLURM / environment ---
+account: gpu-emc-ai
+partition: u1-h100
+qos: gpu
+nodes: 2
+gpus_per_node: 2
+cpus_per_task: 24
+time: "08:00:00"
+env_setup:
+  - module load python
+  - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
+  - conda activate test_adaf_rtma
+env_vars:
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
+  TORCHINDUCTOR_COMPILE_THREADS: 8
+
+# --- training (overrides of config_filepath) ---
+config_filepath: ./config/params_lowres_ges_goes.yaml
+max_epochs: 500
+valid_frequency: 10
+localsgd_h: 50
+target: analysis_obs
+train_sample_fraction: 0.5

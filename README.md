@@ -38,6 +38,12 @@ To resume training on a finished job, open `train_resume_launcher_ges_goes_sbatc
 ### Model inference
 Once you have a trained model, you can perform inference on a single hour with `apply_lowres_to_ges_goes.ipynb`; change the `model_number` and `resume_number` arguments as needed. Run this on a GPU node; the inference takes ~4 seconds on a GPU but ~90 seconds on CPU!
 
+### Ocelot3 Parquet data source (optional)
+The model can also train on Ocelot3's URMA Parquet data instead of the NetCDF dataset. This path has no satellite input and uses Ocelot3's z-score normalization. It needs the `orca_common` package installed. Set the paths and dates in `config/params_lowres_ocelot3.yaml`, check the data with `python test_ocelot3_pipeline.py --date YYYY-MM-DD`, then run `./submit_train.sh configs/train_ocelot3_example.yaml`. See [docs/OCELOT3_ADAPTER.md](docs/OCELOT3_ADAPTER.md).
+
+### Submitting jobs from YAML (alternative to editing the sbatch launchers)
+`./submit_train.sh configs/train_example.yaml [key=value ...]` submits one run. `./submit_experiments_from_yaml.sh [- filter] [--dry-run]` submits any number of experiments defined in `experiment_configs.yaml`. Every option in the config file can be set per experiment, alongside the SLURM resources, the environment and resume. Each run's logs and checkpoints go to `training_runs/<name>/`. See [docs/SUBMITTING_JOBS.md](docs/SUBMITTING_JOBS.md).
+
 -----------------------------------------------------
 #### Known issues
 (2026/09/23) The filenaming scheme is currently a mess and will be cleaned up in the future. 
