@@ -51,8 +51,8 @@ base_config: &BASE_CONFIG
   train_data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/train_data"
   valid_data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/valid_data"
   test_data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/test_data"
-  checkpoint_path: "/scratch3/BMC/wrfruc/aschein/ADAF_RTMA/training_runs/0000/ckpt.tar"
-  best_checkpoint_path: "/scratch3/BMC/wrfruc/aschein/ADAF_RTMA/training_runs/0000/best_ckpt.tar"
+  checkpoint_path: "./checkpoint"
+  best_checkpoint_path: "./best_checkpoint"
   resume_checkpoint_path: None #To be provided only when resuming from checkpoint. Must include best_ckpt.tar or ckpt.tar at the end of the path!
 
   # Input/output variables and channels

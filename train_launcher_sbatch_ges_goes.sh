@@ -1,19 +1,19 @@
 #!/bin/bash
-#SBATCH --account gpu-ghpcs
+#SBATCH --account=gpu-emc-ai
 #SBATCH --qos=gpu
 #SBATCH --partition=u1-h100
-#SBATCH -J ADAF_RTMA_train
+#SBATCH -J adaf_rtma_train
 #SBATCH -o training_runs/lowres_%j/log_%j.out
 #SBATCH -e training_runs/lowres_%j/log_%j.err
 
-#SBATCH --nodes=4
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1          # BACK TO: one launcher task per node
 #SBATCH --cpus-per-task=24
 #SBATCH --gres=gpu:2                 # 2 GPUs per node
 #SBATCH --mem=0
 # NO --gpus-per-task - let all GPUs be visible to the launcher task
 
-#SBATCH -t 12:00:00 #01:30:00
+#SBATCH -t 00:30:00 #01:30:00
 #SBATCH --export=ALL
 
 echo "Starting job"
@@ -55,16 +55,16 @@ echo $PWD
 module load python
 echo 'Modules loaded'
 
-source /scratch3/BMC/wrfruc/aschein/miniconda/etc/profile.d/conda.sh
+source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
 
 ###############
 
-CHECKPOINT_DIR="/scratch3/BMC/wrfruc/aschein/ADAF_RTMA/training_runs/lowres_${SLURM_JOB_ID}"
+CHECKPOINT_DIR="./checkpoints"
 mkdir -p "${CHECKPOINT_DIR}"
 
 # --- Stage ptxas + Triton/Inductor caches on node-local disk ---
 # Exec'ing ptxas off Lustre from 8 concurrent compile workers gives ETXTBSY.
-ENV_BIN=/scratch3/BMC/wrfruc/aschein/miniconda/envs/ADAF_environment/bin
+ENV_BIN= /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/envs/test_adaf_rtma/bin
 export TRITON_PTXAS_PATH=/tmp/ptxas_${SLURM_JOB_ID}
 export TRITON_PTXAS_BLACKWELL_PATH=$TRITON_PTXAS_PATH
 export TRITON_CACHE_DIR=/tmp/triton_cache_${SLURM_JOB_ID}
@@ -92,7 +92,7 @@ srun --ntasks-per-node=1 --mpi=none \
     --rdzv_backend="${RDZV_BACKEND}" \
     --rdzv_endpoint="${RDZV_ENDPOINT}" \
     --rdzv_id="${RDZV_ID}" \
-     /scratch3/BMC/wrfruc/aschein/ADAF_RTMA/train_ges_goes.py \
+     /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/train_ges_goes.py \
      --config_filepath "./config/params_lowres_ges_goes.yaml" \
      --max_epochs 500 \
      --valid_frequency 10 \
