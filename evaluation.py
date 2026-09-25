@@ -160,3 +160,29 @@ plot_output_channel(results_all_obs_minus_no_obs,
                     #plot_savepath='./ee')
                     plot_savepath=f"{plot_dir}/difference_noobs_{channel}_model_{model_number}_{model_name}.png") 
                     # plot_savepath=f"{plot_dir}/ges/difference_noobs_{channel}_model_{model_number}_{model_name}.png") 
+## 5. Scatter: predicted vs. target
+
+# Model analysis vs. RTMA analysis over the whole grid
+plot_scatter_pred_vs_target(results_all_obs,
+                            f"{channel}",
+                            points="all",
+                            title_str=f"{channel}, model vs RTMA anl, all obs, {analysis_time.strftime('%Y-%m-%d %H')} UTC ({title_model})",
+                            units=units_dict[channel],
+                            plot_savepath=f"{plot_dir}/scatter_{channel}_model_{model_number}_{model_name}.png")
+
+# Background (RTMA ges) vs. RTMA analysis, for comparison
+plot_scatter_pred_vs_target(results_all_obs,
+                            f"{channel}",
+                            pred_key="inp_pred_unnorm",
+                            points="all",
+                            title_str=f"{channel}, RTMA ges vs anl, {analysis_time.strftime('%Y-%m-%d %H')} UTC",
+                            units=units_dict[channel],
+                            plot_savepath=f"{plot_dir}/scatter_ges_{channel}.png")
+
+# Only at station cells
+plot_scatter_pred_vs_target(results_all_obs,
+                            f"{channel}",
+                            points="obs",
+                            title_str=f"{channel}, model vs RTMA anl at station cells, {analysis_time.strftime('%Y-%m-%d %H')} UTC ({title_model})",
+                            units=units_dict[channel],
+                            plot_savepath=f"{plot_dir}/scatter_obs_{channel}_model_{model_number}_{model_name}.png")

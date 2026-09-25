@@ -324,3 +324,111 @@ def plot_output_channel(results_dict, channel_name,
 
     plt.tight_layout()
     plt.show()
+
+def plot_scatter_pred_vs_target(results_dict, channel_name,
+                                pred_key="prediction_analysis_unnorm",
+                                target_key="target_analysis_unnorm",
+                                points="all",
+                                max_points=200000,
+                                seed=0,
+                                axis_min=None, axis_max=None,
+                                title_str=None,
+                                units=None,
+                                plot_savepath=None,
+                                ax=None):
+    """Scatter of predicted vs. target values for one output channel (e.g., 'output_t').
+
+    points selects which grid cells are compared:
+        "all"     -- every valid (non-NaN) grid cell
+        "obs"     -- cells with a station ob at analysis time (obs_tar_mask)
+        "heldout" -- station cells withheld from the model input (heldout_mask & obs_tar_mask)
+    The target is always results_dict[target_key] (RTMA analysis by default), including at
+    station cells -- results_dict holds the obs themselves only in normalized residual form.
+
+    Plots at most max_points randomly sampled points (the full grid is ~3.7M cells), but the
+    statistics in the legend (N, bias, RMSE, correlation) use every selected point.
+    Pass ax to draw into an existing subplot; otherwise a new figure is created and shown.
+    Returns the stats dict.
+    """
+    output_names = results_dict['output_channel_names']
+    if channel_name not in output_names:
+        raise KeyError(
+            f"Unknown channel '{channel_name}'. Available: {output_names}"
+        )
+    idx = output_names.index(channel_name)
+
+    pred = np.asarray(results_dict[pred_key][idx], dtype=np.float64)
+    target = np.asarray(results_dict[target_key][idx], dtype=np.float64)
+    if pred.shape != target.shape:
+        raise ValueError(f"shape mismatch: {pred_key} {pred.shape} vs {target_key} {target.shape}")
+
+    valid = np.isfinite(pred) & np.isfinite(target)
+    if points == "obs":
+        valid &= np.asarray(results_dict['obs_tar_mask_array'][idx]) > 0
+    elif points == "heldout":
+        valid &= (np.asarray(results_dict['obs_tar_mask_array'][idx]) > 0) & (np.asarray(results_dict['heldout_mask']) > 0)
+    elif points != "all":
+        raise ValueError("points must be 'all', 'obs', or 'heldout'")
+
+    x = target[valid]
+    y = pred[valid]
+    n = x.size
+    if n == 0:
+        raise ValueError(f"No valid points for {channel_name} with points='{points}'")
+
+    diff = y - x
+    stats = {
+        "n": int(n),
+        "bias": float(np.mean(diff)),
+        "rmse": float(np.sqrt(np.mean(diff ** 2))),
+        "corr": float(np.corrcoef(x, y)[0, 1]) if n > 1 else np.nan,
+    }
+
+    if n > max_points:
+        sample = np.random.default_rng(seed).choice(n, size=max_points, replace=False)
+        x_plot, y_plot = x[sample], y[sample]
+    else:
+        x_plot, y_plot = x, y
+
+    if axis_min is None or axis_max is None:
+        lo = min(np.min(x_plot), np.min(y_plot))
+        hi = max(np.max(x_plot), np.max(y_plot))
+        pad = 0.02 * (hi - lo if hi > lo else 1.0)
+        axis_min = lo - pad if axis_min is None else axis_min
+        axis_max = hi + pad if axis_max is None else axis_max
+
+    own_figure = ax is None
+    if own_figure:
+        fig, ax = plt.subplots(figsize=(7, 7))
+
+    marker_size = 1 if points == "all" else 6
+    ax.scatter(x_plot, y_plot, s=marker_size, alpha=0.3, edgecolors='none', rasterized=True)
+    ax.plot([axis_min, axis_max], [axis_min, axis_max], 'k--', linewidth=1, label='1:1')
+    ax.set_xlim(axis_min, axis_max)
+    ax.set_ylim(axis_min, axis_max)
+    ax.set_aspect('equal')
+
+    unit_str = f" ({units})" if units else ""
+    ax.set_xlabel(f"Target: {target_key}{unit_str}")
+    ax.set_ylabel(f"Predicted: {pred_key}{unit_str}")
+    if title_str is None:
+        ax.set_title(f"{channel_name}, {points} points")
+    else:
+        ax.set_title(title_str)
+
+    stats_text = (f"N = {stats['n']:,}" + (f" (plotted {x_plot.size:,})" if x_plot.size < n else "") + "\n"
+                  f"bias = {stats['bias']:.3f}\n"
+                  f"RMSE = {stats['rmse']:.3f}\n"
+                  f"r = {stats['corr']:.4f}")
+    ax.text(0.03, 0.97, stats_text, transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    ax.legend(loc='lower right')
+    ax.grid(True, alpha=0.3)
+
+    if own_figure:
+        if plot_savepath is not None:
+            plt.savefig(plot_savepath, dpi=300, bbox_inches='tight')
+        plt.tight_layout()
+        plt.show()
+
+    return stats
