@@ -186,3 +186,14 @@ plot_scatter_pred_vs_target(results_all_obs,
                             title_str=f"{channel}, model vs RTMA anl at station cells, {analysis_time.strftime('%Y-%m-%d %H')} UTC ({title_model})",
                             units=units_dict[channel],
                             plot_savepath=f"{plot_dir}/scatter_obs_{channel}_model_{model_number}_{model_name}.png")
+# residual
+plot_scatter_pred_vs_target(results_all_obs,
+                            f"{channel}",
+                            pred_key="prediction_residual_unnorm",
+                            target_key="target_residual_unnorm",
+                            points="all",
+                            title_str=f"{channel}, model vs RTMA anl (residual), all obs, {analysis_time.strftime('%Y-%m-%d %H')} UTC ({title_model})",
+                            units=units_dict[channel],
+                            plot_savepath=f"{plot_dir}/scatter_{channel}_model_{model_number}_{model_name}_residual.png")
+
+

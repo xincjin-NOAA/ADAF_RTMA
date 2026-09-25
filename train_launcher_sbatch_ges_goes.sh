@@ -85,7 +85,7 @@ srun --ntasks-per-node=2 --mpi=none \
 # --- Launch: one torchrun per node; each spawns 2 ranks (1 per GPU) ---
 srun --ntasks-per-node=1 --mpi=none \
      --gres=gpu:2 \
-    /scratch3/BMC/wrfruc/aschein/miniconda/envs/ADAF_environment/bin/python -m torch.distributed.run \
+    /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/envs/test_adaf_rtma/bin/python -m torch.distributed.run \
     --nnodes="${NNODES}" \
     --nproc_per_node=2 \
     --node_rank="${NODE_RANK}" \
