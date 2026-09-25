@@ -185,28 +185,134 @@ def build_model_input_from_netcdf(nc_file, p, include_metar=True):
         ds.close()
 
 
-def run_model_inference(model, nc_path, params, stats_path, device, include_metar=True):
-    """Runs model inference on a NetCDF file, detects fill values and sets outside/padding 
-    regions to NaN, unnormalizes outputs correctly, and returns a packaged dictionary of results.
+def build_model_input_from_ocelot3(dataset, idx, p):
+    """Ocelot3 counterpart of build_model_input_from_netcdf: assembles sample idx of an
+    Ocelot3ParquetDataset (utils/dataloader_ocelot3_parquet.py) into the same (inp, aux) pair.
+
+    Everything is in Ocelot3's z-scored space, padded to the model's img_size. Hold-out follows
+    p.hold_out_obs / p.hold_out_obs_ratio / p.obs_mask_seed and picks stations the same way as
+    the NetCDF builder. There is no satellite input and no METAR/mesonet split on this path.
     """
-    # 1. Load data
-    inp_np, aux = build_model_input_from_netcdf(nc_path, params, include_metar=include_metar)
+    from utils.ocelot3_grid_source import pad_to_shape
+
+    bin_name = dataset.binned_samples[idx]
+    H, W = dataset.grid_shape
+
+    inp_pred, field_mask = dataset._state_grid_and_mask(dataset.loader, "ges", bin_name)
+    field_tar, _anal_mask = dataset._state_grid_and_mask(dataset.anal_loader, "anal", bin_name)
+
+    # Observations (n_vars, T, H, W), 0 = no station
+    obs = dataset._read_obs_window(bin_name)
+    obs_tar = obs[:, -1]
+    obs_tar_mask = (obs_tar != 0).astype(np.float32)
+
+    # Hold-out mask generation matching build_model_input_from_netcdf
+    if p.hold_out_obs:
+        obs_idx = np.flatnonzero((obs_tar != 0).any(axis=0).ravel())
+        hold_out_num = int(len(obs_idx) * p.hold_out_obs_ratio)
+
+        if p.obs_mask_seed is None or p.obs_mask_seed < 0:
+            rng = np.random.default_rng()
+        else:
+            digits = "".join(c for c in bin_name if c.isdigit())
+            rng = np.random.default_rng([int(p.obs_mask_seed), int(digits or 0)])
+
+        hold_out_idx = rng.choice(obs_idx, size=hold_out_num, replace=False)
+
+        obs_mask = np.zeros(H * W, dtype=np.float32)
+        obs_mask[hold_out_idx] = 1.0
+        obs_mask = obs_mask.reshape(H, W)
+
+        inp_obs = obs * (1.0 - obs_mask)
+        inp_obs = inp_obs.reshape((-1, H, W))
+    else:
+        inp_obs = obs.reshape((-1, H, W))
+        obs_mask = np.zeros((H, W), dtype=np.float32)
+
+    field_obs_tar = field_tar.copy()
+    field_obs_tar[obs_tar_mask == 1] = 0
+    field_obs_tar += obs_tar
+
+    if p.learn_residual:
+        field_tar_res = field_tar - inp_pred
+        obs_tar_res = obs_tar - inp_pred
+        field_obs_tar_res = field_obs_tar - inp_pred
+    else:
+        field_tar_res = field_tar
+        obs_tar_res = obs_tar
+        field_obs_tar_res = field_obs_tar
+
+    topo = dataset.terrain[np.newaxis, :, :]
+    inp_sat = np.zeros((0, H, W), dtype=np.float32)
+
+    # Same channel order as Ocelot3ParquetDataset / Trainer.prepare_batch: [inp_pred, inp_obs, topo]
+    inp = np.concatenate((inp_pred, inp_obs, topo), axis=0).astype(np.float32)
+
+    # Pad from the native grid up to params.img_size_y/x (no-op when equal)
+    pad = lambda a: pad_to_shape(a, dataset.padded_shape)
+    lat, lon = dataset._padded_lat_lon()
+
+    aux = {
+        "lat": lat,
+        "lon": lon,
+        "inp_pred": pad(inp_pred).astype(np.float32),
+        "inp_obs": pad(inp_obs).astype(np.float32),
+        "inp_sat": pad(inp_sat).astype(np.float32),
+        "topo": pad(topo).astype(np.float32),
+        "target_field_norm": pad(field_tar).astype(np.float32),
+        "target_field_res_norm": pad(field_tar_res).astype(np.float32),
+        "target_obs_res_norm": pad(obs_tar_res).astype(np.float32),
+        "target_field_obs_res_norm": pad(field_obs_tar_res).astype(np.float32),
+        "obs_tar_mask": pad(obs_tar_mask).astype(np.float32),
+        "obs_mask": pad(obs_mask).astype(np.float32),
+        "field_mask": pad(field_mask),
+    }
+    return pad(inp), aux
+
+
+def ocelot3_state_stats(dataset):
+    """Per-channel (mean, std) that undo Ocelot3's z-score for the ges/anal fields, in
+    dataset.state_vars order. anal is normalized with ges's stats, so one set covers both.
+
+    Temperature comes back in C (Ocelot3 stores K) so units match the NetCDF path.
+    """
+    from utils.dataloader_ocelot3_parquet import STATE_FEATURE_NAMES
+
+    ges_stats = dataset.feature_stats["ges"]
+    mean, std = [], []
+    for v in dataset.state_vars:
+        m, s = ges_stats.get(STATE_FEATURE_NAMES[v], [0.0, 1.0])
+        mean.append(m - 273.15 if v == "t" else m)
+        std.append(s if s > 0 else 1.0)  # same zero-std guard as orca_common's normalization
+    return np.array(mean, dtype=np.float32), np.array(std, dtype=np.float32)
+
+
+def reverse_zscore(arr, mean, std, channel_axis=0):
+    """Reverses z-score normalization (x - mean) / std back to physical units."""
+    arr = np.asarray(arr, dtype=np.float32)
+    reshape = [1] * arr.ndim
+    reshape[channel_axis] = -1
+    return arr * np.asarray(std).reshape(reshape) + np.asarray(mean).reshape(reshape)
+
+
+def _run_and_package(model, inp_np, aux, params, device, unnorm_pred, unnorm_anl,
+                     inp_pred_vars, inp_obs_vars, inp_sat_vars, field_tar_vars):
+    """Shared by run_model_inference and run_model_inference_ocelot3: runs the model on one
+    assembled input, reconstructs the analysis, unnormalizes it with unnorm_pred/unnorm_anl
+    and packages the results dictionary used by the plotting functions below.
+    """
+    # 1. Inference
     inp_tensor = torch.from_numpy(inp_np).unsqueeze(0).to(device)
 
-    # 2. Inference
     model.eval()
     with torch.no_grad():
         pred_tensor = model(inp_tensor)
 
     pred_norm = pred_tensor.squeeze(0).detach().cpu().numpy().astype(np.float32)
 
-    # 3. Load Stats for Unnormalization
-    rtma_anl_vmin, rtma_anl_vmax = load_stats(stats_path, params.field_tar_vars)
-    pred_input_vmin, pred_input_vmax = load_stats(stats_path, params.inp_pred_vars)
-
     inp_pred_norm = aux["inp_pred"].copy()
 
-    # 4. Analysis Reconstruction (in Normalized Space)
+    # 2. Analysis Reconstruction (in Normalized Space)
     if params.learn_residual:
         pred_analysis_norm = pred_norm + inp_pred_norm
         target_analysis_norm = aux["target_field_res_norm"] + inp_pred_norm
@@ -214,27 +320,33 @@ def run_model_inference(model, nc_path, params, stats_path, device, include_meta
         pred_analysis_norm = pred_norm
         target_analysis_norm = aux["target_field_res_norm"]
 
-    # 5. Reverse Normalization to Physical Units
-    inp_pred_unnorm = reverse_norm(inp_pred_norm, pred_input_vmin, pred_input_vmax, channel_axis=0)
-    pred_analysis_unnorm = reverse_norm(pred_analysis_norm, rtma_anl_vmin, rtma_anl_vmax, channel_axis=0)
-    target_analysis_unnorm = reverse_norm(target_analysis_norm, rtma_anl_vmin, rtma_anl_vmax, channel_axis=0)
+    # 3. Reverse Normalization to Physical Units
+    inp_pred_unnorm = unnorm_pred(inp_pred_norm)
+    pred_analysis_unnorm = unnorm_anl(pred_analysis_norm)
+    target_analysis_unnorm = unnorm_anl(target_analysis_norm)
+
+    # Cells the loader marks invalid (Ocelot3 padding / missing ges) -> NaN
+    if "field_mask" in aux:
+        invalid = ~np.asarray(aux["field_mask"], dtype=bool)
+        for arr in (inp_pred_unnorm, pred_analysis_unnorm, target_analysis_unnorm):
+            arr[invalid] = np.nan
 
     # Physical residual (innovation) = Analysis - Background Prediction
     pred_residual_unnorm = pred_analysis_unnorm - inp_pred_unnorm
     target_residual_unnorm = target_analysis_unnorm - inp_pred_unnorm
 
-    # 6. Channel maps and result packaging
+    # 4. Channel maps and result packaging
     output_channel_names = [
         f"output_{v.split('rtma_anl_', 1)[1]}" if v.startswith("rtma_anl_") else f"output_{v}"
-        for v in params.field_tar_vars
+        for v in field_tar_vars
     ]
 
     channel_maps = {
-        "input_pred": {i: v for i, v in enumerate(params.inp_pred_vars)},
-        "input_obs": {i: v for i, v in enumerate(params.inp_obs_vars)},
-        "input_sat": {i: v for i, v in enumerate(getattr(params, "inp_sat_vars", []))},
+        "input_pred": {i: v for i, v in enumerate(inp_pred_vars)},
+        "input_obs": {i: v for i, v in enumerate(inp_obs_vars)},
+        "input_sat": {i: v for i, v in enumerate(inp_sat_vars)},
         "output": {i: v for i, v in enumerate(output_channel_names)},
-        "target_field": {i: v for i, v in enumerate(params.field_tar_vars)},
+        "target_field": {i: v for i, v in enumerate(field_tar_vars)},
     }
 
     results = {
@@ -264,6 +376,46 @@ def run_model_inference(model, nc_path, params, stats_path, device, include_meta
     }
 
     return results
+
+
+def run_model_inference(model, nc_path, params, stats_path, device, include_metar=True):
+    """Runs model inference on a NetCDF file, unnormalizes outputs with the min-max stats in
+    stats_path, and returns a packaged dictionary of results.
+    """
+    inp_np, aux = build_model_input_from_netcdf(nc_path, params, include_metar=include_metar)
+
+    rtma_anl_vmin, rtma_anl_vmax = load_stats(stats_path, params.field_tar_vars)
+    pred_input_vmin, pred_input_vmax = load_stats(stats_path, params.inp_pred_vars)
+
+    return _run_and_package(
+        model, inp_np, aux, params, device,
+        unnorm_pred=lambda a: reverse_norm(a, pred_input_vmin, pred_input_vmax, channel_axis=0),
+        unnorm_anl=lambda a: reverse_norm(a, rtma_anl_vmin, rtma_anl_vmax, channel_axis=0),
+        inp_pred_vars=params.inp_pred_vars,
+        inp_obs_vars=params.inp_obs_vars,
+        inp_sat_vars=getattr(params, "inp_sat_vars", []),
+        field_tar_vars=params.field_tar_vars,
+    )
+
+
+def run_model_inference_ocelot3(model, dataset, idx, params, device):
+    """Runs model inference on sample idx of an Ocelot3ParquetDataset, unnormalizes outputs with
+    Ocelot3's z-score stats, and returns the same results dictionary as run_model_inference.
+    """
+    inp_np, aux = build_model_input_from_ocelot3(dataset, idx, params)
+
+    mean, std = ocelot3_state_stats(dataset)
+    unnorm = lambda a: reverse_zscore(a, mean, std, channel_axis=0)
+
+    return _run_and_package(
+        model, inp_np, aux, params, device,
+        unnorm_pred=unnorm,
+        unnorm_anl=unnorm,  # anal is normalized with ges's stats
+        inp_pred_vars=[f"ges_{v}" for v in dataset.state_vars],
+        inp_obs_vars=[f"obs_{v}" for v in dataset.state_vars],
+        inp_sat_vars=[],
+        field_tar_vars=list(dataset.state_vars),
+    )
 
 
 # ============================================================================

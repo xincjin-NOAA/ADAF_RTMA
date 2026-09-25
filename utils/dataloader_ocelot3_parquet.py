@@ -37,8 +37,17 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset, DistributedSampler, RandomSampler
 
-from orca_common.dataset_timeseries import ParquetDataManager, generate_binned_timestamp_list
-from orca_common.observation_config import load_observation_config
+try:
+    from orca_common.dataset_timeseries import ParquetDataManager, generate_binned_timestamp_list
+    from orca_common.observation_config import load_observation_config
+except ModuleNotFoundError as e:
+    if e.name != "orca_common":
+        raise
+    raise ModuleNotFoundError(
+        "data_source=ocelot3 needs the orca_common package in this environment: "
+        "pip install -e /path/to/orca-common  (or pip install git+https://github.com/xincjin-NOAA/orca-common). "
+        "See docs/OCELOT3_ADAPTER.md."
+    ) from e
 from utils.dataloader_multifiles_ges_goes import FractionalDistributedSampler
 from utils.ocelot3_grid_source import (
     build_grid_tree,

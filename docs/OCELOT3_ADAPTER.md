@@ -86,9 +86,11 @@ The rest of the Trainer is unchanged: GPU assembly, loss, bf16, compile and Loca
 
 ## Inference
 
-`read_ocelot3_sample_for_inference(dataset, idx, hold_out_obs_ratio, seed)` returns one fully assembled, padded sample with its own hold-out split: `(inp, inp_pred, field_tar, hold_out_obs, inp_obs_for_eval, field_mask, lat, lon)`. Everything stays in Ocelot3's z-scored space, and no reverse normalization is available yet.
+`read_ocelot3_sample_for_inference(dataset, idx, hold_out_obs_ratio, seed)` returns one fully assembled, padded sample with its own hold-out split: `(inp, inp_pred, field_tar, hold_out_obs, inp_obs_for_eval, field_mask, lat, lon)`. Everything stays in Ocelot3's z-scored space.
 
-It is **not** wired into `inference.py` or `apply_lowres_to_ges_goes.ipynb` yet.
+[evaluation.py](../evaluation.py) evaluates Ocelot3-trained models when `data_source = "ocelot3"`. It uses `run_model_inference_ocelot3(model, dataset, idx, params, device)` in [utils/inference_functions.py](../utils/inference_functions.py), which returns the same results dictionary as the NetCDF `run_model_inference`, so the same plots work for both sources. Outputs are converted back to physical units with the `ges` z-score stats from `FEATURE_STATS` (`anal` shares them), and temperature is converted from K to C. Hold-out follows `hold_out_obs`, `hold_out_obs_ratio` and `obs_mask_seed`, the same as the NetCDF path. Cells where `field_mask` is false are set to NaN.
+
+It is **not** wired into `apply_lowres_to_ges_goes.ipynb` yet.
 
 ## Open items
 
