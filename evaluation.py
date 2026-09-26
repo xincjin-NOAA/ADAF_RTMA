@@ -11,8 +11,9 @@ from utils.misc_functions import *
 from utils.inference_functions import *
 from utils.YParams import *
 
-data_source = "netcdf" # "netcdf" (RTMA ges/anl + GOES NetCDF) | "ocelot3" (URMA Parquet, docs/OCELOT3_ADAPTER.md)
-
+data_source = "ocelot3" # "netcdf" (RTMA ges/anl + GOES NetCDF) | "ocelot3" (URMA Parquet, docs/OCELOT3_ADAPTER.md)
+exp_name = 'smoke'
+exp_name = 'base'
 model_number = 22046307
 resume_number = False
 model_name = "best_ckpt" #"best_ckpt"
@@ -20,12 +21,14 @@ model_name = "best_ckpt" #"best_ckpt"
 base_dir = "/scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma"
 
 #ckpt_path = f"{base_dir}/training_runs/lowres_{model_number}/{model_name}.tar"
-ckpt_path = f"{base_dir}/checkpoint/{model_name}.tar"
+ckpt_path = f"{base_dir}/training_runs/{data_source}_{exp_name}/{model_name}.tar"
+
 if resume_number:
     ckpt_path = f"{base_dir}/training_runs/lowres_{model_number}_resume_{resume_number}/{model_name}.tar"
 
 # Change date as desired
-analysis_time = dt.datetime(2023, 6, 13, 6) #(2022,10,13,4)
+#analysis_time = dt.datetime(2023, 6, 13, 6) #(2022,10,13,4)
+analysis_time = dt.datetime(2023, 2, 13, 6) #(2022,10,13,4)
 
 if data_source == "ocelot3":
     config_filepath = "./config/params_lowres_ocelot3.yaml"

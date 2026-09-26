@@ -222,23 +222,24 @@ experiments:
     target: analysis_obs
     train_sample_fraction: 0.5
 
-  goes_base_resume:
-    description: "Continue goes_base from its ckpt.tar (settings of train_resume_launcher_ges_goes_sbatch.sh)"
-    run_dir: training_runs/goes_base
-    resume: true
-    nodes: 2
-    gpus_per_node: 2
-    time: "08:00:00"
-    max_epochs: 1000
-    valid_frequency: 10
-    localsgd_h: 50
-    train_sample_fraction: 0.5
-    lr: 1.0e-4
-    scheduler_patience: 25
+  # goes_base_resume:
+  #   description: "Continue goes_base from its ckpt.tar (settings of train_resume_launcher_ges_goes_sbatch.sh)"
+  #   run_dir: training_runs/goes_base
+  #   resume: true
+  #   nodes: 2
+  #   gpus_per_node: 2
+  #   time: "08:00:00"
+  #   max_epochs: 1000
+  #   valid_frequency: 10
+  #   localsgd_h: 50
+  #   train_sample_fraction: 0.5
+  #   lr: 1.0e-4
+  #   scheduler_patience: 25
 
   ocelot3_base:
     description: "LowResEncDec on Ocelot3 urma_ok Parquet, Feb-Mar 2022"
     config_filepath: ./config/params_lowres_ocelot3.yaml
+    nodes: 2
     gpus_per_node: 2
     time: "04:00:00"
     max_epochs: 200
@@ -248,15 +249,15 @@ experiments:
     ocelot3_valid_start_date: "2022-04-01"
     ocelot3_valid_end_date: "2022-04-07"
 
-  ocelot3_no_residual:
-    description: "ocelot3_base without learn_residual"
-    config_filepath: ./config/params_lowres_ocelot3.yaml
-    gpus_per_node: 2
-    time: "04:00:00"
-    max_epochs: 200
-    valid_frequency: 5
-    learn_residual: false
-    ocelot3_train_start_date: "2022-02-01"
-    ocelot3_train_end_date: "2022-03-31"
-    ocelot3_valid_start_date: "2022-04-01"
-    ocelot3_valid_end_date: "2022-04-07"
+  # ocelot3_no_residual:
+  #   description: "ocelot3_base without learn_residual"
+  #   config_filepath: ./config/params_lowres_ocelot3.yaml
+  #   gpus_per_node: 2
+  #   time: "04:00:00"
+  #   max_epochs: 200
+  #   valid_frequency: 5
+  #   learn_residual: false
+  #   ocelot3_train_start_date: "2022-02-01"
+  #   ocelot3_train_end_date: "2022-03-31"
+  #   ocelot3_valid_start_date: "2022-04-01"
+  #   ocelot3_valid_end_date: "2022-04-07"
