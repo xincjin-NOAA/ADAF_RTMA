@@ -287,6 +287,25 @@ def ocelot3_state_stats(dataset):
     return np.array(mean, dtype=np.float32), np.array(std, dtype=np.float32)
 
 
+def ocelot3_obs_stats(dataset):
+    """Per-channel (mean, std) that undo Ocelot3's z-score for the station obs, in
+    dataset.state_vars order. Obs use their conventional instrument's own stats (diag_t, ...),
+    which differ from ges's; falls back to ges's stats if an instrument has none.
+
+    Temperature comes back in C, as in ocelot3_state_stats.
+    """
+    from utils.dataloader_ocelot3_parquet import CONVENTIONAL_INSTRUMENTS
+
+    mean, std = ocelot3_state_stats(dataset)
+    for i, v in enumerate(dataset.state_vars):
+        inst_stats = dataset.feature_stats.get(CONVENTIONAL_INSTRUMENTS[v]) or {}
+        if len(inst_stats) == 1:  # single-feature instrument
+            m, s = next(iter(inst_stats.values()))
+            mean[i] = m - 273.15 if v == "t" else m
+            std[i] = s if s > 0 else 1.0
+    return mean, std
+
+
 def reverse_zscore(arr, mean, std, channel_axis=0):
     """Reverses z-score normalization (x - mean) / std back to physical units."""
     arr = np.asarray(arr, dtype=np.float32)
@@ -296,10 +315,11 @@ def reverse_zscore(arr, mean, std, channel_axis=0):
 
 
 def _run_and_package(model, inp_np, aux, params, device, unnorm_pred, unnorm_anl,
-                     inp_pred_vars, inp_obs_vars, inp_sat_vars, field_tar_vars):
+                     inp_pred_vars, inp_obs_vars, inp_sat_vars, field_tar_vars, unnorm_obs=None):
     """Shared by run_model_inference and run_model_inference_ocelot3: runs the model on one
     assembled input, reconstructs the analysis, unnormalizes it with unnorm_pred/unnorm_anl
-    and packages the results dictionary used by the plotting functions below.
+    (and the station obs with unnorm_obs, default unnorm_anl) and packages the results
+    dictionary used by the plotting functions below.
     """
     # 1. Inference
     inp_tensor = torch.from_numpy(inp_np).unsqueeze(0).to(device)
@@ -335,6 +355,11 @@ def _run_and_package(model, inp_np, aux, params, device, unnorm_pred, unnorm_anl
     pred_residual_unnorm = pred_analysis_unnorm - inp_pred_unnorm
     target_residual_unnorm = target_analysis_unnorm - inp_pred_unnorm
 
+    # Station obs at analysis time (all stations, including held-out ones), NaN elsewhere
+    obs_tar_norm = aux["target_obs_res_norm"] + inp_pred_norm if params.learn_residual else aux["target_obs_res_norm"]
+    obs_unnorm = (unnorm_obs or unnorm_anl)(obs_tar_norm)
+    obs_unnorm[aux["obs_tar_mask"] == 0] = np.nan
+
     # 4. Channel maps and result packaging
     output_channel_names = [
         f"output_{v.split('rtma_anl_', 1)[1]}" if v.startswith("rtma_anl_") else f"output_{v}"
@@ -365,6 +390,7 @@ def _run_and_package(model, inp_np, aux, params, device, unnorm_pred, unnorm_anl
         "inp_pred_unnorm": inp_pred_unnorm,
         "prediction_analysis_unnorm": pred_analysis_unnorm,
         "target_analysis_unnorm": target_analysis_unnorm,
+        "obs_unnorm": obs_unnorm,
 
         # Metadata & Coordinates
         "channel_maps": channel_maps,
@@ -386,11 +412,13 @@ def run_model_inference(model, nc_path, params, stats_path, device, include_meta
 
     rtma_anl_vmin, rtma_anl_vmax = load_stats(stats_path, params.field_tar_vars)
     pred_input_vmin, pred_input_vmax = load_stats(stats_path, params.inp_pred_vars)
+    obs_vmin, obs_vmax = load_stats(stats_path, params.inp_obs_vars)
 
     return _run_and_package(
         model, inp_np, aux, params, device,
         unnorm_pred=lambda a: reverse_norm(a, pred_input_vmin, pred_input_vmax, channel_axis=0),
         unnorm_anl=lambda a: reverse_norm(a, rtma_anl_vmin, rtma_anl_vmax, channel_axis=0),
+        unnorm_obs=lambda a: reverse_norm(a, obs_vmin, obs_vmax, channel_axis=0),
         inp_pred_vars=params.inp_pred_vars,
         inp_obs_vars=params.inp_obs_vars,
         inp_sat_vars=getattr(params, "inp_sat_vars", []),
@@ -406,11 +434,13 @@ def run_model_inference_ocelot3(model, dataset, idx, params, device):
 
     mean, std = ocelot3_state_stats(dataset)
     unnorm = lambda a: reverse_zscore(a, mean, std, channel_axis=0)
+    obs_mean, obs_std = ocelot3_obs_stats(dataset)
 
     return _run_and_package(
         model, inp_np, aux, params, device,
         unnorm_pred=unnorm,
         unnorm_anl=unnorm,  # anal is normalized with ges's stats
+        unnorm_obs=lambda a: reverse_zscore(a, obs_mean, obs_std, channel_axis=0),
         inp_pred_vars=[f"ges_{v}" for v in dataset.state_vars],
         inp_obs_vars=[f"obs_{v}" for v in dataset.state_vars],
         inp_sat_vars=[],

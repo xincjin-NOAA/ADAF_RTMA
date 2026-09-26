@@ -113,4 +113,4 @@ This means:
 
 ## Relation to the old launchers
 
-`train_launcher_sbatch_ges_goes.sh` and `train_resume_launcher_ges_goes_sbatch.sh` still work unchanged. `goes_base` and `goes_base_resume` reproduce their settings, but through the YAML tooling. There is no submit tooling for inference yet, because `inference.py` has no command-line interface (it is a script with hard-coded paths).
+`train_launcher_sbatch_ges_goes.sh` and `train_resume_launcher_ges_goes_sbatch.sh` still work unchanged. `goes_base` and `goes_base_resume` reproduce their settings, but through the YAML tooling. For inference over many hours, use `./submit_predict.sh`. It is described in [PREDICTING.md](PREDICTING.md).

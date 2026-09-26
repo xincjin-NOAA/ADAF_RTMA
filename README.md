@@ -38,6 +38,8 @@ To resume training on a finished job, open `train_resume_launcher_ges_goes_sbatc
 ### Model inference
 Once you have a trained model, you can perform inference on a single hour with `apply_lowres_to_ges_goes.ipynb`; change the `model_number` and `resume_number` arguments as needed. Run this on a GPU node; the inference takes ~4 seconds on a GPU but ~90 seconds on CPU!
 
+To run a checkpoint over a range of hours, use `./submit_predict.sh configs/predict_example.yaml` (or `python predict.py <yaml>` on a GPU node). It saves the analyses and writes verification metrics against the target analysis and the station obs, with all, held-out and no obs. The Ocelot3 version is `configs/predict_ocelot3_example.yaml`. See [docs/PREDICTING.md](docs/PREDICTING.md).
+
 ### Ocelot3 Parquet data source (optional)
 The model can also train on Ocelot3's URMA Parquet data instead of the NetCDF dataset. This path has no satellite input and uses Ocelot3's z-score normalization. It needs the `orca_common` package installed. Set the paths and dates in `config/params_lowres_ocelot3.yaml`, check the data with `python test_ocelot3_pipeline.py --date YYYY-MM-DD`, then run `./submit_train.sh configs/train_ocelot3_example.yaml`. See [docs/OCELOT3_ADAPTER.md](docs/OCELOT3_ADAPTER.md).
 

@@ -1,0 +1,45 @@
+# Batch-inference config for predict.py / submit_predict.sh (Ocelot3 Parquet data -- docs/OCELOT3_ADAPTER.md).
+#
+#   ./submit_predict.sh configs/predict_ocelot3_example.yaml
+#   ./submit_predict.sh configs/predict_ocelot3_example.yaml checkpoint=training_runs/ocelot3_lowres/ckpt.tar --debug
+#
+# Needs orca_common installed in the environment. See docs/PREDICTING.md for every option.
+# Outputs go to predictions/<name>/.
+
+name: ocelot3_lowres_test
+description: "ocelot3_lowres best checkpoint on held-out days"
+
+# --- model: must match the training run ---
+config_filepath: ./config/params_lowres_ocelot3.yaml
+checkpoint: training_runs/ocelot3_lowres/best_ckpt.tar
+params:                  # the data paths, plus any architecture overrides the training run used
+  ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+  ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
+
+# --- analysis times (inclusive); obs from the obs_time_window - 1 earlier hours are read too ---
+start_time: 2023-02-13T00:00
+end_time: 2023-02-13T23:00
+hour_step: 1
+
+# --- what to run and save ---
+modes: [all_obs, heldout, no_obs]
+heldout_ratio: null      # null = hold_out_obs_ratio from config_filepath (0.1)
+save_fields: true
+field_formats: [nc]      # nc (NetCDF) and/or pt (torch tensors), e.g. [nc, pt]
+plot_channels: [t]
+skip_existing: false
+
+# --- SLURM job (submit_predict.sh only) ---
+slurm:
+  account: gpu-emc-ai
+  partition: u1-h100
+  qos: gpu
+  cpus_per_task: 8
+  mem: 64G
+  time: "01:00:00"
+  env_setup:
+    - module load python
+    - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
+    - conda activate test_adaf_rtma
+  env_vars:
+    OMP_NUM_THREADS: 4
