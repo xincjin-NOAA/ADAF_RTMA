@@ -23,6 +23,7 @@ SLURM_DEFAULTS = {
     "qos": "gpu",
     "cpus_per_task": 8,
     "mem": "64G",
+    "skip_existing": False,
     "time": "02:00:00",
     "extra_sbatch": [],   # extra raw "#SBATCH ..." option strings
     "env_setup": [],      # shell lines run first (module load, conda activate, ...)
