@@ -28,6 +28,7 @@ import argparse
 import copy
 import datetime as dt
 import difflib
+import logging
 import os
 import sys
 import time
@@ -83,6 +84,7 @@ PREDICT_DEFAULTS = {
     "plot_channels": [],           # e.g. [t, u10]: error map + scatter per time (all_obs, else first mode)
     "skip_existing": False,        # skip times already in metrics_per_time.csv (resume after a timeout)
     "continue_on_error": True,     # log and skip a time whose data can't be read
+    "log_level": "INFO",           # DEBUG | INFO | WARNING | ERROR (Python logging, incl. data loaders)
 }
 IGNORED_KEYS = {                   # submit options, read by tools/submit_predict.py only
     "slurm", "account", "partition", "qos", "cpus_per_task", "mem", "time",
@@ -379,6 +381,7 @@ def main():
     args = parser.parse_args()
 
     cfg = load_predict_config(args.config, args.overrides)
+    logging.basicConfig(level=str(cfg["log_level"]).upper(), format="%(levelname)s %(name)s: %(message)s")
     times = analysis_times(cfg)
     params = build_params(cfg)
     data_source = getattr(params, "data_source", "netcdf")

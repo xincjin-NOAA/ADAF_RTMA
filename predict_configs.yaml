@@ -80,6 +80,7 @@ defaults:
   # field_formats: [nc]              # nc (NetCDF) and/or pt (torch tensors)
   # skip_existing: false             # true = resume, skipping times already in metrics_per_time.csv
   # continue_on_error: true          # log and skip a time whose data can't be read
+  # log_level: INFO                  # DEBUG | INFO | WARNING | ERROR; WARNING quiets data-loading logs
   plot_channels: [t]                 # error map + scatter per time; [] for none
 
 predictions:

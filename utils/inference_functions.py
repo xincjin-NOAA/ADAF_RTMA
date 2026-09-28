@@ -1,3 +1,4 @@
+import logging
 import os
 import numpy as np
 import pandas as pd
@@ -10,6 +11,8 @@ import hdf5plugin
 
 from utils.misc_functions import *
 from utils.YParams import *
+
+logger = logging.getLogger(__name__)
 
 ##################
 
@@ -155,12 +158,12 @@ def build_model_input_from_netcdf(nc_file, p, include_metar=True):
 
         # Target residual in normalized space if model learns residual
         if p.learn_residual:
-            print(f"learn_residual: {p.learn_residual} (targets built as residuals vs. inp_pred)")
+            logger.warning("learn_residual: %s (targets built as residuals vs. inp_pred)", p.learn_residual)
             field_tar_res = field_tar - inp_pred
             obs_tar_res = obs_tar - inp_pred
             field_obs_tar_res = field_obs_tar - inp_pred
         else:
-            print(f"learn_residual: {p.learn_residual} (targets built as  inp_pred)")
+            logger.warning("learn_residual: %s (targets built as inp_pred)", p.learn_residual)
             field_tar_res = field_tar
             obs_tar_res = obs_tar
             field_obs_tar_res = field_obs_tar
@@ -236,12 +239,12 @@ def build_model_input_from_ocelot3(dataset, idx, p):
     field_obs_tar += obs_tar
 
     if p.learn_residual:
-        print(f"learn_residual: {p.learn_residual} (targets built as residuals vs. inp_pred)")
+        logger.warning("learn_residual: %s (targets built as residuals vs. inp_pred)", p.learn_residual)
         field_tar_res = field_tar - inp_pred
         obs_tar_res = obs_tar - inp_pred
         field_obs_tar_res = field_obs_tar - inp_pred
     else:
-        print(f"learn_residual: {p.learn_residual} (targets built as  inp_pred)")
+        logger.warning("learn_residual: %s (targets built as inp_pred)", p.learn_residual)
         field_tar_res = field_tar
         obs_tar_res = obs_tar
         field_obs_tar_res = field_obs_tar
@@ -338,11 +341,11 @@ def _run_and_package(model, inp_np, aux, params, device, unnorm_pred, unnorm_anl
 
     # 2. Analysis Reconstruction (in Normalized Space)
     if params.learn_residual:
-        print(f"learn_residual: {p.learn_residual} (Analysis Reconstruction (in Normalized Space) as pred_norm + inp_pred_norm)")
+        logger.warning("learn_residual: %s (analysis = pred_norm + inp_pred_norm)", params.learn_residual)
         pred_analysis_norm = pred_norm + inp_pred_norm
         target_analysis_norm = aux["target_field_res_norm"] + inp_pred_norm
     else:
-        print(f"learn_residual: {p.learn_residual} (Analysis Reconstruction (in Normalized Space) as pred_norm )")
+        logger.warning("learn_residual: %s (analysis = pred_norm)", params.learn_residual)
         pred_analysis_norm = pred_norm
         target_analysis_norm = aux["target_field_res_norm"]
 

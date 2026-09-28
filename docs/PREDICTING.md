@@ -99,6 +99,7 @@ Units are °C for `t`, kg/kg for `q` and m/s for `u10` and `v10`. On the Ocelot3
 | `plot_channels` | `[]` | Variables to plot, e.g. `[t, u10]` |
 | `skip_existing` | `false` | Resume: skip times already in `metrics_per_time.csv`. When `false`, an existing file is replaced. |
 | `continue_on_error` | `true` | Log and skip a time whose data is missing or unreadable |
+| `log_level` | `INFO` | Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Per-sample data-loading messages are `DEBUG`; use `WARNING` to also quiet library (e.g. orca_common) info logs. |
 
 The `params` check above only catches missing or misshapen weights. A setting that doesn't change the weights, such as `learn_residual`, loads without error but gives wrong analyses if it differs from training. Copy it too.
 
