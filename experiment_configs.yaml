@@ -249,15 +249,17 @@ experiments:
     ocelot3_valid_start_date: "2022-04-01"
     ocelot3_valid_end_date: "2022-04-07"
 
-  # ocelot3_no_residual:
-  #   description: "ocelot3_base without learn_residual"
-  #   config_filepath: ./config/params_lowres_ocelot3.yaml
-  #   gpus_per_node: 2
-  #   time: "04:00:00"
-  #   max_epochs: 200
-  #   valid_frequency: 5
-  #   learn_residual: false
-  #   ocelot3_train_start_date: "2022-02-01"
-  #   ocelot3_train_end_date: "2022-03-31"
-  #   ocelot3_valid_start_date: "2022-04-01"
-  #   ocelot3_valid_end_date: "2022-04-07"
+  ocelot3_no_residual:
+    description: "LowResEncDec on Ocelot3 urma_ok Parquet, Feb-Mar 2022"
+    config_filepath: ./config/params_lowres_ocelot3.yaml
+    nodes: 2
+    gpus_per_node: 2
+    time: "04:00:00"
+    max_epochs: 200
+    valid_frequency: 5   
+    learn_residual: false
+    ocelot3_train_start_date: "2022-02-01"
+    ocelot3_train_end_date: "2022-03-31"
+    ocelot3_valid_start_date: "2022-04-01"
+    ocelot3_valid_end_date: "2022-04-07"
+

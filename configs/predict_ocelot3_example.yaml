@@ -6,12 +6,12 @@
 # Needs orca_common installed in the environment. See docs/PREDICTING.md for every option.
 # Outputs go to predictions/<name>/.
 
-name: ocelot3_base
+name: ocelot3_no_residual
 description: "ocelot3_lowres best checkpoint on held-out days"
 
 # --- model: must match the training run ---
 config_filepath: ./config/params_lowres_ocelot3.yaml
-checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_base/best_ckpt.tar
+checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_no_residual/best_ckpt.tar
 params:                  # the data paths, plus any architecture overrides the training run used
   ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
   ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
