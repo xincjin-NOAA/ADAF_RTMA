@@ -37,7 +37,7 @@ slurm:
   cpus_per_task: 8
   mem: 64G
   time: "01:00:00"
-  skip_existing: true
+  skip_existing: pass
   env_setup:
     - module load python
     - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
