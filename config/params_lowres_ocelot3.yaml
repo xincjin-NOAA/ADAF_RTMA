@@ -1,5 +1,6 @@
-# Consolidated ADAF parameter configuration
-# Merged configuration (overridden by third file values + new parameters added)
+# ADAF-RTMA configuration for the Ocelot3 Parquet data source (see docs/OCELOT3_ADAPTER.md)
+# Copy of params_lowres_ges_goes.yaml with the data section swapped for Ocelot3.
+# img_size_x/y and in_chans are overridden at runtime by train_ges_goes.py from the Ocelot3 static grid.
 
 base_config: &BASE_CONFIG
 
@@ -47,19 +48,23 @@ base_config: &BASE_CONFIG
   # ============================================================================
   # DATA PATHS AND SPECIFICATIONS
   # ============================================================================
-  data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges"
-  train_data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/train_data"
-  valid_data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/valid_data"
-  test_data_path: "/scratch5/BMC/ai-datadepot/projects/aschein/ADAF_new/data_ges_goes/test_data"
+  data_source: "ocelot3" # "netcdf" | "ocelot3"
+  ocelot3_data_dir: "/scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok" # root containing the *.parquet tables
+  ocelot3_static_data_dir: "/scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok" # urma2p5_terrain.npy / urma2p5_slmask_nolakes.npz
+  ocelot3_delta_time: 1 # hours between bins
+  ocelot3_pad_multiple: None # None = auto (1 for arch lowres, patch_size*window_size for flat)
+  ocelot3_train_start_date: "2022-02-01" # start/end must be in the same year
+  ocelot3_train_end_date: "2022-02-20"
+  ocelot3_valid_start_date: "2022-02-21"
+  ocelot3_valid_end_date: "2022-02-28"
   checkpoint_path: "./checkpoint"
   best_checkpoint_path: "./best_checkpoint"
   resume_checkpoint_path: None #To be provided only when resuming from checkpoint. Must include best_ckpt.tar or ckpt.tar at the end of the path!
 
   # Input/output variables and channels
-  inp_pred_vars: ["rtma_ges_q", "rtma_ges_t", "rtma_ges_u10", "rtma_ges_v10"]
-  inp_obs_vars: ["sta_q", "sta_t", "sta_u10", "sta_v10"]
-  inp_sat_vars: ["goes_channel_02", "goes_channel_07", "goes_channel_10", "goes_channel_14"]
-  field_tar_vars: ["rtma_anl_q", "rtma_anl_t", "rtma_anl_u10", "rtma_anl_v10"]
+  # Only target_vars is read on this path: it sets the channel order (and must use t/q/u10/v10 names).
+  # No satellite -- Ocelot3 has no satellite source.
+  inp_sat_vars: []
   target_vars: ["q", "t", "u10", "v10"]
 
   # Data processing
@@ -69,10 +74,10 @@ base_config: &BASE_CONFIG
   # MODEL ARCHITECTURE -- 1/4-res Swin body, Tier M
   # ============================================================================
   upscale: 1
-  in_chans: 29 #now with satellite data
+  in_chans: 17 # overridden at runtime: 4 background + 4*obs_time_window obs + 1 topo (no satellite)
   out_chans: 4
-  img_size_x: 2345 #2294
-  img_size_y: 1597 #1356
+  img_size_x: 331 # overridden at runtime from ocelot3_static_data_dir (urma_ok native grid is 171 x 331)
+  img_size_y: 171
   arch: "lowres"
   multiscale: False
   downscale: 4
@@ -127,6 +132,7 @@ base_config: &BASE_CONFIG
   # ============================================================================
   # NORMALIZATION
   # ============================================================================
+  # Unused on the Ocelot3 path: data arrive z-scored by orca_common (FEATURE_STATS)
   norm_type: "variable_wise_ignore_extreme"
   normalization: "minmax_ignore_extreme"
 

@@ -1,0 +1,133 @@
+# ADAF-RTMA batch-inference (predict.py) definitions for submit_predictions_from_yaml.sh.
+#
+#   ./submit_predictions_from_yaml.sh                              # submit every run below
+#   ./submit_predictions_from_yaml.sh - ocelot3 --dry-run          # write job scripts for "*ocelot3*" only
+#   ./submit_predictions_from_yaml.sh - goes_lowres_test --version june   # outputs under predictions/goes_lowres_test/june
+#   ./submit_predictions_from_yaml.sh - ocelot3 --set end_time=2023-02-15T23:00
+#
+# `defaults:` applies to every run; each entry under `predictions:` overrides only the keys
+# it lists. Mappings (params, env_vars) are merged key by key, so an entry can add one
+# `params` key without repeating the rest. There are two kinds of key:
+#   * SUBMIT options (SLURM resources, environment): consumed by the submitter. All of them
+#     are listed, with their defaults, in the first half of `defaults:`. Every job gets
+#     1 node and 1 GPU.
+#   * PREDICT options: every other key, written to <output_dir>/predict_config.yaml for
+#     predict.py. The full list is in the second half of `defaults:` (commented out;
+#     uncomment to override). Unknown keys, and `params` keys not in the run's
+#     config_filepath, are rejected before submitting.
+# Full reference: docs/PREDICTING.md.
+#
+# Each run writes to output_dir (default predictions/<run name>): SLURM logs (log_<jobid>.out/.err),
+# the generated job script, predict_config.yaml, metrics_*.csv, fields/ and plots/. The
+# submitter refuses to overwrite an existing metrics_per_time.csv unless skip_existing: true
+# (resume), --version or --force.
+#
+# The model is rebuilt from config_filepath + params, so both must match the training run:
+# copy every architecture/data override from its experiment_configs.yaml entry into params
+# (learn_residual included -- a mismatch there loads fine but gives wrong analyses).
+
+defaults:
+  # ==========================================================================
+  # SUBMIT OPTIONS (value shown = built-in default unless noted)
+  # ==========================================================================
+  # --- SLURM resources ---
+  account: gpu-emc-ai
+  partition: u1-h100
+  qos: gpu                           # set to null to omit --qos
+  cpus_per_task: 8
+  mem: 64G                           # "0" = all of the node's memory
+  time: "01:00:00"                   # --debug overrides to 00:30:00
+  # extra_sbatch: []                 # raw sbatch options, e.g. ["--mail-type=END"]
+
+  # --- environment ---
+  env_setup:                         # shell lines run at the start of the job, in order
+    - module load python
+    - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
+    - conda activate test_adaf_rtma
+  # python: python                   # interpreter after env_setup
+  env_vars:                          # exported in the job
+    OMP_NUM_THREADS: 4
+
+  # ==========================================================================
+  # PREDICT OPTIONS -- written to predict_config.yaml. Values below are
+  # predict.py's defaults, so leaving them commented changes nothing.
+  # ==========================================================================
+  # description: ""                  # printed at submit time and in the job script
+
+  # --- model: must match the training run ---
+  # config_filepath: ./config/params_lowres_ges_goes.yaml   # its data_source picks NetCDF or Ocelot3
+  # checkpoint: null                 # required, e.g. training_runs/<experiment>/best_ckpt.tar
+  # params: {}                       # overrides of config_filepath keys (arch, learn_residual, ocelot3_*, ...)
+
+  # --- analysis times (inclusive) ---
+  # start_time: null                 # required unless times is set, e.g. 2023-06-13T00:00
+  # end_time: null                   # null = start_time
+  # hour_step: 1
+  # times: null                      # explicit list instead of start/end/step
+
+  # --- data (NetCDF path only; Ocelot3 reads params.ocelot3_*) ---
+  # data_dir: null                   # dir of YYYY-MM-DD_HH.nc files; null = test_data_path from config_filepath
+  # stats_path: ./data_preparation_ges/stats_ges.csv
+
+  # --- what to run ---
+  # modes: [all_obs, heldout, no_obs]
+  # heldout_ratio: null              # null = hold_out_obs_ratio from config_filepath (0.1)
+  # device: auto                     # auto | cuda | cpu
+
+  # --- outputs ---
+  # output_dir: predictions/{name}   # {name} = run name; --version V appends /V
+  # save_fields: true                # <output_dir>/fields/<YYYY-MM-DD_HH>.<format>
+  # field_formats: [nc]              # nc (NetCDF) and/or pt (torch tensors)
+  # skip_existing: false             # true = resume, skipping times already in metrics_per_time.csv
+  # continue_on_error: true          # log and skip a time whose data can't be read
+  log_level: WARNING                  # DEBUG | INFO | WARNING | ERROR; WARNING quiets data-loading logs
+  plot_channels: [t]                 # error map + scatter per time; [] for none
+
+predictions:
+
+  # ==========================================================================
+  # NetCDF + GOES
+  # ==========================================================================
+
+  goes_lowres_test:
+    description: "goes_lowres best checkpoint on 2023 test data"
+    checkpoint: training_runs/goes_lowres/best_ckpt.tar
+    start_time: 2023-06-13T00:00
+    end_time: 2023-06-13T23:00
+
+  # goes_base:
+  #   description: "goes_base (experiment_configs.yaml) best checkpoint, June 2023"
+  #   checkpoint: training_runs/goes_base/best_ckpt.tar
+  #   start_time: 2023-06-01T00:00
+  #   end_time: 2023-06-30T23:00
+  #   time: "08:00:00"
+  #   field_formats: [nc]
+
+  # ==========================================================================
+  # Ocelot3 Parquet (needs orca_common in the environment)
+  # ==========================================================================
+
+  ocelot3_base:
+    description: "ocelot3_base best checkpoint on held-out days"
+    config_filepath: ./config/params_lowres_ocelot3.yaml
+    checkpoint: training_runs/ocelot3_base/best_ckpt.tar
+    params:
+      ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+      ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
+    start_time: 2023-02-15T00:00
+    end_time: 2023-02-20T23:00
+    time: "01:00:00"
+    field_formats: [nc, pt]
+
+  ocelot3_no_residual:
+    description: "ocelot3_no_residual best checkpoint on held-out days"
+    config_filepath: ./config/params_lowres_ocelot3.yaml
+    checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_no_residual/best_ckpt.tar
+    params:
+      ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+      ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
+      learn_residual: false          # trained with learn_residual: false
+    start_time: 2023-02-15T00:00
+    end_time: 2023-02-20T23:00
+    time: "01:00:00"
+    field_formats: [nc, pt]

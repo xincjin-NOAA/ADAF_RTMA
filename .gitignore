@@ -18,6 +18,9 @@ inference_runs/
 #Ignore training checkpoints
 training_runs/
 
+# Ignore batch-inference outputs (predict.py)
+predictions/
+
 #Ignore plots
 Plots/
 

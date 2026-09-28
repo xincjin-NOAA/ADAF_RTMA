@@ -1,0 +1,38 @@
+# Single-run config for submit_train.sh (Ocelot3 Parquet data -- docs/OCELOT3_ADAPTER.md).
+#
+#   ./submit_train.sh configs/train_ocelot3_example.yaml
+#   ./submit_train.sh configs/train_ocelot3_example.yaml max_epochs=1 batch_size=1 --debug
+#
+# Needs orca_common installed in the environment. See experiment_configs.yaml or
+# docs/SUBMITTING_JOBS.md for every option. Outputs go to training_runs/<name>/.
+
+name: ocelot3_lowres
+description: "LowResEncDec on Ocelot3 urma_ok Parquet"
+
+# --- SLURM / environment ---
+account: gpu-emc-ai
+partition: u1-h100
+qos: gpu
+nodes: 1
+gpus_per_node: 2
+cpus_per_task: 24
+time: "04:00:00"
+env_setup:
+  - module load python
+  - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
+  - conda activate test_adaf_rtma
+env_vars:
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
+  TORCHINDUCTOR_COMPILE_THREADS: 8
+
+# --- training (overrides of config_filepath) ---
+config_filepath: ./config/params_lowres_ocelot3.yaml
+ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
+ocelot3_train_start_date: "2022-02-01"
+ocelot3_train_end_date: "2022-03-31"
+ocelot3_valid_start_date: "2022-04-01"
+ocelot3_valid_end_date: "2022-04-07"
+max_epochs: 200
+valid_frequency: 5
