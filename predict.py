@@ -410,6 +410,7 @@ def main():
 
     print(f"Predict run '{cfg['name']}': {len(times)} time(s) {times[0]:%Y-%m-%d %H} .. {times[-1]:%Y-%m-%d %H}, "
           f"modes {cfg['modes']}, data_source {data_source}, device {device}")
+    print(f"learn_residual: {params.learn_residual}")
     print(f"Output: {out_dir}")
 
     model = load_model(params, cfg["checkpoint"], device)

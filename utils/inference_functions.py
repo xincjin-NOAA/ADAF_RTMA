@@ -155,6 +155,7 @@ def build_model_input_from_netcdf(nc_file, p, include_metar=True):
 
         # Target residual in normalized space if model learns residual
         if p.learn_residual:
+            print(f"learn_residual: {p.learn_residual} (targets built as residuals vs. inp_pred)")
             field_tar_res = field_tar - inp_pred
             obs_tar_res = obs_tar - inp_pred
             field_obs_tar_res = field_obs_tar - inp_pred
