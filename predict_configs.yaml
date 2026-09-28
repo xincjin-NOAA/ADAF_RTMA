@@ -36,7 +36,7 @@ defaults:
   qos: gpu                           # set to null to omit --qos
   cpus_per_task: 8
   mem: 64G                           # "0" = all of the node's memory
-  time: "02:00:00"                   # --debug overrides to 00:30:00
+  time: "01:00:00"                   # --debug overrides to 00:30:00
   # extra_sbatch: []                 # raw sbatch options, e.g. ["--mail-type=END"]
 
   # --- environment ---
