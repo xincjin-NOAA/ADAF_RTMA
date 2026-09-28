@@ -21,6 +21,7 @@ import time
 import random
 import datetime
 import argparse
+import logging
 import contextlib
 import numpy as np
 
@@ -629,6 +630,8 @@ if __name__ == "__main__":
    
     params = YParams(args.config_filepath)
     params.override_from_cli(args)
+
+    logging.basicConfig(level=str(params.log_level).upper(), format="%(levelname)s %(name)s: %(message)s")
 
     # Get SLURM info for DDP and set params
     params["local_rank"] = int(os.environ.get("LOCAL_RANK", 0))

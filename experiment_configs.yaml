@@ -159,6 +159,7 @@ defaults:
   # seed: 0
   # train_obs_source: metar
   # log_to_screen: true
+  # log_level: WARNING               # DEBUG | INFO | WARNING | ERROR (Python logging, incl. data loaders)
   # hold_out_ratio_min: 0.05         # (no-op)
   # hold_out_ratio_max: 0.30         # (no-op)
   # hold_out_block_prob: 0.3         # (no-op)

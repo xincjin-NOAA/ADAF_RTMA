@@ -127,6 +127,7 @@ base_config: &BASE_CONFIG
   resuming: False
   enable_amp: True
   log_to_screen: True
+  log_level: WARNING    # Python logging level: DEBUG | INFO | WARNING | ERROR (data loaders etc.)
 
   # ============================================================================
   # NORMALIZATION
