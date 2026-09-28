@@ -2,7 +2,7 @@
 save the analyses and compute verification metrics.
 
 The command-line counterpart of evaluation.py, which handles one hour with hard-coded paths.
-Settings come from a predict YAML (configs/predict_example.yaml,
+Settings come from a predict YAML (one run of predict_configs.yaml, or configs/predict_example.yaml,
 configs/predict_ocelot3_example.yaml); see docs/PREDICTING.md for every option.
 
 For each analysis time and each obs mode it runs the model and writes
@@ -17,7 +17,8 @@ Obs modes:
               hold_out_obs_ratio) and verified separately ("heldout_obs")
   no_obs   -- every station is withheld, so the "obs" verification is fully independent
 
-Usage (from the repo root, on a GPU node -- or submit with ./submit_predict.sh):
+Usage (from the repo root, on a GPU node -- or submit with ./submit_predict.sh or
+./submit_predictions_from_yaml.sh):
   python predict.py configs/predict_example.yaml [key=value ...]
 
 key=value overrides are parsed as YAML; use dotted keys for nested ones, e.g.
@@ -83,7 +84,10 @@ PREDICT_DEFAULTS = {
     "skip_existing": False,        # skip times already in metrics_per_time.csv (resume after a timeout)
     "continue_on_error": True,     # log and skip a time whose data can't be read
 }
-IGNORED_KEYS = {"slurm"}           # read by tools/submit_predict.py only
+IGNORED_KEYS = {                   # submit options, read by tools/submit_predict.py only
+    "slurm", "account", "partition", "qos", "cpus_per_task", "mem", "time",
+    "extra_sbatch", "env_setup", "env_vars", "python",
+}
 MODES = ("all_obs", "heldout", "no_obs")
 FIELD_FORMATS = ("nc", "pt")
 UNITS = {"t": "C", "q": "kg/kg", "u10": "m/s", "v10": "m/s"}

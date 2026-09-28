@@ -113,4 +113,4 @@ This means:
 
 ## Relation to the old launchers
 
-`train_launcher_sbatch_ges_goes.sh` and `train_resume_launcher_ges_goes_sbatch.sh` still work unchanged. `goes_base` and `goes_base_resume` reproduce their settings, but through the YAML tooling. For inference over many hours, use `./submit_predict.sh`. It is described in [PREDICTING.md](PREDICTING.md).
+`train_launcher_sbatch_ges_goes.sh` and `train_resume_launcher_ges_goes_sbatch.sh` still work unchanged. `goes_base` and `goes_base_resume` reproduce their settings, but through the YAML tooling. For inference over many hours, use `./submit_predictions_from_yaml.sh` (with [predict_configs.yaml](../predict_configs.yaml)) or `./submit_predict.sh`. Both are described in [PREDICTING.md](PREDICTING.md).

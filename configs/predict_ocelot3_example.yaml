@@ -1,13 +1,28 @@
-# Batch-inference config for predict.py / submit_predict.sh (Ocelot3 Parquet data -- docs/OCELOT3_ADAPTER.md).
+# Single-run batch-inference config for submit_predict.sh / predict.py (Ocelot3 Parquet data -- docs/OCELOT3_ADAPTER.md).
 #
 #   ./submit_predict.sh configs/predict_ocelot3_example.yaml
 #   ./submit_predict.sh configs/predict_ocelot3_example.yaml checkpoint=training_runs/ocelot3_lowres/ckpt.tar --debug
 #
-# Needs orca_common installed in the environment. See docs/PREDICTING.md for every option.
-# Outputs go to predictions/<name>/.
+# Needs orca_common installed in the environment. Same keys as a run in predict_configs.yaml
+# (see that file or docs/PREDICTING.md for every option): submit options (SLURM, environment)
+# plus predict.py options. Outputs go to predictions/<name>/.
 
 name: ocelot3_no_residual
-description: "ocelot3_lowres best checkpoint on held-out days"
+description: "ocelot3_no_residual best checkpoint on held-out days"
+
+# --- SLURM / environment (submit_predict.sh only; predict.py ignores these) ---
+account: gpu-emc-ai
+partition: u1-h100
+qos: gpu
+cpus_per_task: 8
+mem: 64G
+time: "01:00:00"
+env_setup:
+  - module load python
+  - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
+  - conda activate test_adaf_rtma
+env_vars:
+  OMP_NUM_THREADS: 4
 
 # --- model: must match the training run ---
 config_filepath: ./config/params_lowres_ocelot3.yaml
@@ -15,6 +30,7 @@ checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_n
 params:                  # the data paths, plus any architecture overrides the training run used
   ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
   ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
+  learn_residual: false  # ocelot3_no_residual was trained with learn_residual: false
 
 # --- analysis times (inclusive); obs from the obs_time_window - 1 earlier hours are read too ---
 start_time: 2023-02-15T00:00
@@ -25,22 +41,6 @@ hour_step: 1
 modes: [all_obs, heldout, no_obs]
 heldout_ratio: null      # null = hold_out_obs_ratio from config_filepath (0.1)
 save_fields: true
-field_formats: [nc, pt]      # nc (NetCDF) and/or pt (torch tensors), e.g. [nc, pt]
+field_formats: [nc, pt]  # nc (NetCDF) and/or pt (torch tensors)
 plot_channels: [t]
 skip_existing: false
-
-# --- SLURM job (submit_predict.sh only) ---
-slurm:
-  account: gpu-emc-ai
-  partition: u1-h100
-  qos: gpu
-  cpus_per_task: 8
-  mem: 64G
-  time: "01:00:00"
-  skip_existing: pass
-  env_setup:
-    - module load python
-    - source /scratch3/NCEPDEV/da/Xin.C.Jin/miniconda/etc/profile.d/conda.sh
-    - conda activate test_adaf_rtma
-  env_vars:
-    OMP_NUM_THREADS: 4

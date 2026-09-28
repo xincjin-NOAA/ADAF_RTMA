@@ -6,19 +6,28 @@
 
 | Command | Use it for |
 |---|---|
-| `./submit_predict.sh <predict.yaml> [key=value ...]` | Submit a single-GPU SLURM job (run on a login node) |
-| `python predict.py <predict.yaml> [key=value ...]` | Run directly, on a GPU node or interactively |
+| `./submit_predictions_from_yaml.sh [file\|-] [filter] [--set key=value ...]` | Submit several runs defined in one file (`defaults:` + `predictions:`), by default [predict_configs.yaml](../predict_configs.yaml) |
+| `./submit_predict.sh <predict.yaml> [key=value ...]` | Submit one run from a flat file, such as [configs/predict_example.yaml](../configs/predict_example.yaml) |
+| `python predict.py <predict.yaml> [key=value ...]` | Run a flat file directly, on a GPU node or interactively |
+
+Both submitters run on a login node, give each run a single-GPU SLURM job, and share [tools/submit_predict.py](../tools/submit_predict.py). This mirrors training's `submit_experiments_from_yaml.sh` / `submit_train.sh` ([SUBMITTING_JOBS.md](SUBMITTING_JOBS.md)).
 
 ```bash
-./submit_predict.sh configs/predict_example.yaml --dry-run          # preview the job script
-./submit_predict.sh configs/predict_example.yaml end_time=2023-06-30T23:00 slurm.time=08:00:00
+./submit_predictions_from_yaml.sh                               # every run in predict_configs.yaml
+./submit_predictions_from_yaml.sh - ocelot3 --dry-run           # only runs whose name contains "ocelot3"; preview
+./submit_predictions_from_yaml.sh - goes_lowres_test --version june --set end_time=2023-06-30T23:00
+./submit_predict.sh configs/predict_example.yaml end_time=2023-06-30T23:00 time=08:00:00
 ./submit_predict.sh configs/predict_ocelot3_example.yaml --debug    # 30-minute limit
 python predict.py configs/predict_example.yaml start_time=2023-06-13T06:00 end_time=2023-06-13T06:00
 ```
 
-Example configs: [configs/predict_example.yaml](../configs/predict_example.yaml) (NetCDF) and [configs/predict_ocelot3_example.yaml](../configs/predict_ocelot3_example.yaml).
+Example flat configs: [configs/predict_example.yaml](../configs/predict_example.yaml) (NetCDF) and [configs/predict_ocelot3_example.yaml](../configs/predict_ocelot3_example.yaml).
 
-`key=value` overrides are parsed as YAML. Dotted keys reach nested blocks, for example `params.hold_out_obs_ratio=0.2` or `slurm.time=04:00:00`.
+In [predict_configs.yaml](../predict_configs.yaml), each entry under `predictions:` is `defaults:` with the entry's keys on top. Mappings (`params`, `env_vars`) are merged key by key, so an entry can add one `params` key without repeating the others. The entry's name is the run name.
+
+Every key is either a submit option (see [SLURM options](#slurm-options)) or a predict option (see [Option reference](#option-reference)). Unknown keys, and `params` keys that aren't in the run's `config_filepath`, are rejected before anything is submitted. An older flat file with the submit options under a `slurm:` block still works.
+
+`key=value` and `--set` overrides are parsed as YAML. Dotted keys reach nested blocks, for example `params.hold_out_obs_ratio=0.2`.
 
 ## Submitter flags
 
@@ -26,9 +35,11 @@ Example configs: [configs/predict_example.yaml](../configs/predict_example.yaml)
 |---|---|
 | `--dry-run` | Write the job script and resolved config, but don't submit |
 | `--debug` | Set the time limit to 00:30:00 |
+| `--version V` | Write to `<output_dir>/V` instead of `output_dir` |
 | `--force` | Allow overwriting an existing `metrics_per_time.csv` in `output_dir` |
+| `--set KEY=VALUE` | `submit_predictions_from_yaml.sh` only: override an option for every selected run (repeatable). `submit_predict.sh` takes bare `key=value` instead. |
 
-The submitter merges the overrides into the YAML and writes the result to `<output_dir>/predict_config.yaml`. The job runs `predict.py` on that copy, so a job can always be rerun from its output directory.
+For each run, the submitter writes the predict options (with overrides applied) to `<output_dir>/predict_config.yaml`. The job runs `predict.py` on that copy, so a job can always be rerun from its output directory.
 
 ## Obs modes
 
@@ -69,7 +80,7 @@ Units are °C for `t`, kg/kg for `q` and m/s for `u10` and `v10`. On the Ocelot3
 
 | Key | Default | Meaning |
 |---|---|---|
-| `name` | file stem | Run name; used in `output_dir` and the job name |
+| `name` | entry name / file stem | Run name; used in `output_dir` and the job name. In `predict_configs.yaml` it is the entry's key |
 | `description` | `""` | Free text |
 | `config_filepath` | `./config/params_lowres_ges_goes.yaml` | Model/data config. Its `data_source` selects the NetCDF or Ocelot3 path |
 | `checkpoint` | required | e.g. `training_runs/<name>/best_ckpt.tar` or `ckpt.tar` |
@@ -82,18 +93,34 @@ Units are °C for `t`, kg/kg for `q` and m/s for `u10` and `v10`. On the Ocelot3
 | `modes` | `[all_obs, heldout, no_obs]` | See [Obs modes](#obs-modes) |
 | `heldout_ratio` | `hold_out_obs_ratio` | Fraction of stations withheld in `heldout` mode |
 | `device` | `auto` | `auto`, `cuda` or `cpu` |
-| `output_dir` | `predictions/{name}` | `{name}` is replaced by `name` |
+| `output_dir` | `predictions/{name}` | `{name}` is replaced by `name`; `--version V` appends `/V` |
 | `save_fields` | `true` | Write per-hour field files to `fields/`. For the full NetCDF grid, `.nc` is roughly 100–200 MB per hour. |
 | `field_formats` | `[nc]` | Which field files to write: `nc`, `pt`, or both (`[nc, pt]`) |
 | `plot_channels` | `[]` | Variables to plot, e.g. `[t, u10]` |
 | `skip_existing` | `false` | Resume: skip times already in `metrics_per_time.csv`. When `false`, an existing file is replaced. |
 | `continue_on_error` | `true` | Log and skip a time whose data is missing or unreadable |
-| `slurm` | see below | Used only by `submit_predict.sh` |
 
-`slurm` block: `account`, `partition`, `qos`, `cpus_per_task` (8), `mem` (`64G`), `time` (`02:00:00`), `extra_sbatch`, `env_setup`, `env_vars` and `python`. The job always uses one node and one GPU.
+The `params` check above only catches missing or misshapen weights. A setting that doesn't change the weights, such as `learn_residual`, loads without error but gives wrong analyses if it differs from training. Copy it too.
+
+## SLURM options
+
+Used only by the submitters; `predict.py` ignores them. Every job gets one node and one GPU.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `account` | `gpu-emc-ai` | `--account` |
+| `partition` | `u1-h100` | `--partition` |
+| `qos` | `gpu` | `--qos`; `null` omits it |
+| `cpus_per_task` | 8 | `--cpus-per-task` |
+| `mem` | `64G` | `--mem`; `"0"` = all of the node's memory |
+| `time` | `02:00:00` | Time limit; `--debug` sets 00:30:00 |
+| `extra_sbatch` | `[]` | Raw sbatch options, e.g. `["--mail-type=END"]` |
+| `env_setup` | `[]` | Shell lines run at the start of the job (module load, conda activate, ...) |
+| `env_vars` | `{}` | Exported in the job |
+| `python` | `python` | Interpreter after `env_setup` |
 
 ## Notes
 
-- **Resuming after a timeout.** Resubmit with `skip_existing=true`, e.g. `./submit_predict.sh configs/predict_example.yaml skip_existing=true`.
+- **Resuming after a timeout.** Resubmit with `skip_existing=true`, e.g. `./submit_predictions_from_yaml.sh - goes_lowres_test --set skip_existing=true` or `./submit_predict.sh configs/predict_example.yaml skip_existing=true`.
 - **Ocelot3 date ranges.** One dataset is built per calendar year, so a range can cross a year boundary. The obs window reads the `obs_time_window - 1` hours before each analysis time.
 - **NetCDF obs.** `train_obs_source` from the config (default `metar`) also filters the obs at inference, so the `obs` verification uses only those stations.

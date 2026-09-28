@@ -1,35 +1,55 @@
 #!/usr/bin/env python3
-"""Generate and submit a single-GPU SLURM job that runs predict.py from a predict YAML.
+"""Generate and submit single-GPU SLURM jobs that run predict.py from a YAML file.
 
-The YAML's `slurm:` block holds the job's resources and environment (SLURM_DEFAULTS below);
-every other key is a predict.py option (see predict.py / docs/PREDICTING.md). Overrides are
-merged in, the resolved YAML is written to <output_dir>/predict_config.yaml, and the job runs
-`predict.py <output_dir>/predict_config.yaml`, so the job is reproducible from its output dir.
+The predict counterpart of tools/submit_experiments.py. See docs/PREDICTING.md.
+
+A predict file is either
+  * multi-run: `defaults:` + `predictions: {name: {overrides}}` (predict_configs.yaml), or
+  * single-run: a flat mapping of options (configs/predict_example.yaml); its name is `name:`
+    or the file's stem.
+Each run is its defaults with its own keys on top; mappings (params, env_vars) are merged
+key by key, so a run can add one `params` key without repeating the rest.
+
+Every key is either a submit option (SUBMIT_DEFAULTS below: SLURM resources, environment)
+or a predict.py option (PREDICT_DEFAULTS in predict.py). A `slurm:` block is also accepted
+for submit options (the older single-run layout). The predict options are written to
+<output_dir>/predict_config.yaml and the job runs `predict.py <that file>`, so every job is
+reproducible from its output dir.
 
 Usage (from the repo root, on a login node):
-  python3 tools/submit_predict.py <predict.yaml> [--set key=value ...] [--dry-run] [--debug] [--force]
+  python3 tools/submit_predict.py predict_configs.yaml [filter] [--dry-run] [--debug]
+                                  [--version V] [--force] [--set key=value ...]
 """
 import argparse
+import ast
+import copy
+import difflib
 import os
+import re
 import shlex
 import subprocess
 import sys
 
-from submit_experiments import REPO_ROOT, load_yaml, parse_value
+from submit_experiments import REPO_ROOT, config_keys, load_yaml, parse_value
 
-SLURM_DEFAULTS = {
+# Consumed here; never written to the predict config.
+SUBMIT_DEFAULTS = {
+    # --- SLURM resources (always 1 node, 1 GPU) ---
     "account": "gpu-emc-ai",
     "partition": "u1-h100",
     "qos": "gpu",
     "cpus_per_task": 8,
     "mem": "64G",
-    "skip_existing": False,
     "time": "02:00:00",
     "extra_sbatch": [],   # extra raw "#SBATCH ..." option strings
+    # --- environment ---
     "env_setup": [],      # shell lines run first (module load, conda activate, ...)
     "env_vars": {},       # exported into the job
     "python": "python",   # interpreter after env_setup
 }
+SUBMIT_KEYS = set(SUBMIT_DEFAULTS)
+DEFAULT_CONFIG = "predict_configs.yaml"
+DEFAULT_MODEL_CONFIG = "./config/params_lowres_ges_goes.yaml"  # predict.py's config_filepath default
 DEBUG_TIME = "00:30:00"
 
 JOB_TEMPLATE = r"""#!/bin/bash -l
@@ -68,6 +88,7 @@ nvidia-smi -L || true
 echo "runTime=$(( $(date +%s) - startTime ))s"
 """
 
+####################
 
 def dump_yaml(data, path):
     try:
@@ -88,99 +109,199 @@ def set_dotted(cfg, dotted_key, value):
     node[keys[-1]] = value
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("config_file", help="predict YAML, e.g. configs/predict_example.yaml")
-    parser.add_argument("--dry-run", action="store_true", help="write the job script, don't submit")
-    parser.add_argument("--debug", action="store_true", help=f"override time limit to {DEBUG_TIME}")
-    parser.add_argument("--force", action="store_true", help="allow overwriting existing metrics in output_dir")
-    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
-                        help="override an option; dotted keys for nesting, e.g. slurm.time=01:00:00 (repeatable)")
-    args = parser.parse_args()
+def deep_merge(base, over):
+    """base with over on top; nested mappings are merged key by key."""
+    out = copy.deepcopy(base)
+    for key, value in over.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], value)
+        else:
+            out[key] = copy.deepcopy(value)
+    return out
 
-    if not os.path.isfile(args.config_file):
-        sys.exit(f"Config file not found: {args.config_file}")
-    cfg = load_yaml(args.config_file)
-    for kv in args.set:
-        if "=" not in kv:
-            sys.exit(f"--set expects KEY=VALUE, got {kv!r}")
-        key, value = kv.split("=", 1)
-        set_dotted(cfg, key.strip(), parse_value(value))
 
-    slurm = {**SLURM_DEFAULTS, **(cfg.get("slurm") or {})}
-    unknown = sorted(set(slurm) - set(SLURM_DEFAULTS))
-    name = cfg.get("name") or os.path.splitext(os.path.basename(args.config_file))[0]
+def predict_option_keys():
+    """Keys of predict.py's PREDICT_DEFAULTS, read without importing predict.py (torch etc.)."""
+    try:
+        with open(os.path.join(REPO_ROOT, "predict.py")) as f:
+            tree = ast.parse(f.read())
+    except OSError as e:
+        print(f"  warning: can't read predict.py to validate options ({e})", file=sys.stderr)
+        return None
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                and any(isinstance(t, ast.Name) and t.id == "PREDICT_DEFAULTS" for t in node.targets)):
+            return {k.value for k in node.value.keys}
+    print("  warning: no PREDICT_DEFAULTS in predict.py; not validating options", file=sys.stderr)
+    return None
+
+####################
+
+def resolve_runs(data, source, filter_str):
+    if "predictions" in data:
+        defaults = data.get("defaults") or {}
+        runs = {name: deep_merge(defaults, overrides or {})
+                for name, overrides in (data.get("predictions") or {}).items()}
+    else:  # single-run file
+        name = data.get("name") or os.path.splitext(os.path.basename(source))[0]
+        runs = {name: dict(data)}
+
+    for run in runs.values():  # older layout: submit options under slurm:
+        run.update(run.pop("slurm", None) or {})
+    if filter_str:
+        runs = {k: v for k, v in runs.items() if filter_str in k}
+    return runs
+
+
+def build_job(name, run, args, predict_keys):
+    run = copy.deepcopy(run)
+    run.update(run.pop("slurm", None) or {})  # from a --set slurm.KEY=VALUE
+    opts = {**SUBMIT_DEFAULTS, **{k: v for k, v in run.items() if k in SUBMIT_KEYS}}
+    cfg = {k: v for k, v in run.items() if k not in SUBMIT_KEYS}
     cfg["name"] = name
-    out_dir = str(cfg.get("output_dir", "predictions/{name}")).format(name=name)
+
+    out_dir = str(cfg.get("output_dir") or "predictions/{name}").format(name=name)
+    if args.version:
+        out_dir = os.path.join(out_dir, args.version)
+    cfg["output_dir"] = out_dir
     out_dir_abs = os.path.join(REPO_ROOT, out_dir)  # join keeps absolute paths as-is
 
     errors = []
-    if unknown:
-        errors.append(f"unknown slurm option(s) {unknown}; valid: {sorted(SLURM_DEFAULTS)}")
-    for key in ("checkpoint", "config_filepath"):
-        path = cfg.get(key)
-        if key == "checkpoint" and not path:
-            errors.append("checkpoint is required")
-        elif path and not os.path.isfile(os.path.join(REPO_ROOT, path)):
-            errors.append(f"{key} {path} does not exist")
+    if predict_keys is not None:
+        for key in cfg:
+            if key not in predict_keys:
+                hint = difflib.get_close_matches(key, sorted(predict_keys | SUBMIT_KEYS), n=1)
+                errors.append(f"unknown option '{key}'" + (f" (did you mean '{hint[0]}'?)" if hint else "")
+                              + " -- not a submit option or a predict.py option")
+    model_config = cfg.get("config_filepath") or DEFAULT_MODEL_CONFIG
+    if not os.path.isfile(os.path.join(REPO_ROOT, model_config)):
+        errors.append(f"config_filepath {model_config} does not exist")
+    else:
+        known = config_keys(model_config)
+        for key in (cfg.get("params") or {}) if known is not None else ():
+            if key not in known:
+                hint = difflib.get_close_matches(key, sorted(known), n=1)
+                errors.append(f"unknown params key '{key}'" + (f" (did you mean '{hint[0]}'?)" if hint else "")
+                              + f" -- not in {model_config}")
+    if not cfg.get("checkpoint"):
+        errors.append("checkpoint is required")
+    elif not os.path.isfile(os.path.join(REPO_ROOT, cfg["checkpoint"])):
+        errors.append(f"checkpoint {cfg['checkpoint']} does not exist")
     if not cfg.get("times") and not cfg.get("start_time"):
         errors.append("set start_time (and end_time), or times")
     if (os.path.isfile(os.path.join(out_dir_abs, "metrics_per_time.csv"))
             and not cfg.get("skip_existing") and not args.force):
         errors.append(f"{out_dir}/metrics_per_time.csv exists and would be overwritten -- "
-                      "set skip_existing: true to resume, change name/output_dir, or pass --force")
+                      "set skip_existing: true to resume, use --version, or pass --force")
 
-    time_limit = DEBUG_TIME if args.debug else slurm["time"]
+    time = DEBUG_TIME if args.debug else opts["time"]
     config_copy = os.path.join(out_dir_abs, "predict_config.yaml")
     replacements = {
         "SOURCE": args.config_file,
         "NAME": name,
         "DESCRIPTION": str(cfg.get("description", "")).replace("\n", " "),
-        "ACCOUNT": slurm["account"],
-        "QOS_LINE": f"#SBATCH --qos={slurm['qos']}\n" if slurm["qos"] else "",
-        "PARTITION": slurm["partition"],
+        "ACCOUNT": opts["account"],
+        "QOS_LINE": f"#SBATCH --qos={opts['qos']}\n" if opts["qos"] else "",
+        "PARTITION": opts["partition"],
         "OUT_DIR": out_dir_abs,
-        "CPUS": slurm["cpus_per_task"],
-        "MEM": slurm["mem"],
-        "TIME": time_limit,
-        "EXTRA_SBATCH": "\n".join(f"#SBATCH {o}" for o in slurm["extra_sbatch"]),
+        "CPUS": opts["cpus_per_task"],
+        "MEM": opts["mem"],
+        "TIME": time,
+        "EXTRA_SBATCH": "\n".join(f"#SBATCH {o}" for o in opts["extra_sbatch"]),
         "REPO_ROOT": REPO_ROOT,
-        "ENV_SETUP": "\n".join(slurm["env_setup"]) or "# (no env_setup given)",
-        "ENV_VARS": "\n".join(f"export {k}={shlex.quote(str(v))}" for k, v in slurm["env_vars"].items()),
-        "PYTHON": slurm["python"],
+        "ENV_SETUP": "\n".join(opts["env_setup"]) or "# (no env_setup given)",
+        "ENV_VARS": "\n".join(f"export {k}={shlex.quote(str(v))}" for k, v in opts["env_vars"].items()),
+        "PYTHON": opts["python"],
         "CONFIG": config_copy,
     }
     script = JOB_TEMPLATE
     for key, value in replacements.items():
         script = script.replace(f"@@{key}@@", str(value))
+    leftover = re.findall(r"@@[A-Z_]+@@", script)
+    assert not leftover, f"unfilled template placeholders {leftover}"
 
-    print(f"Predict run '{name}'" + (" [DRY RUN]" if args.dry_run else "") + (" [DEBUG]" if args.debug else ""))
-    print(f"    checkpoint {cfg.get('checkpoint')}")
-    print(f"    times {cfg.get('times') or (str(cfg.get('start_time')) + ' .. ' + str(cfg.get('end_time') or cfg.get('start_time')))}")
-    print(f"    1 GPU, time {time_limit}, output_dir {out_dir_abs}")
-    if errors:
-        for e in errors:
-            print(f"    ERROR: {e}")
-        sys.exit(1)
+    return {"out_dir": out_dir_abs, "config_copy": config_copy, "cfg": cfg, "script": script,
+            "errors": errors, "time": time}
 
-    os.makedirs(out_dir_abs, exist_ok=True)  # sbatch needs the -o/-e dir to exist
-    dump_yaml(cfg, config_copy)
-    script_path = os.path.join(out_dir_abs, f"job_predict_{name}.sh")
-    with open(script_path, "w", newline="\n") as f:
-        f.write(script)
-    os.chmod(script_path, 0o755)
-    print(f"    config: {config_copy}")
-    print(f"    job script: {script_path}")
+####################
 
-    if args.dry_run:
-        print(f"    [dry run] would run: sbatch {script_path}")
-        return
-    if subprocess.run(["which", "sbatch"], capture_output=True).returncode != 0:
-        sys.exit("    ERROR: sbatch not found -- run on a login node, or use --dry-run")
-    result = subprocess.run(["sbatch", script_path], cwd=REPO_ROOT, capture_output=True, text=True)
-    if result.returncode != 0:
-        sys.exit(f"    ERROR: sbatch failed: {result.stderr.strip()}")
-    print(f"    submitted: {result.stdout.strip()}")
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("config_file", nargs="?", default=DEFAULT_CONFIG,
+                        help=f"predict YAML ('-' = {DEFAULT_CONFIG})")
+    parser.add_argument("filter", nargs="?", default="", help="only runs whose name contains this")
+    parser.add_argument("--dry-run", action="store_true", help="write job scripts and configs, don't submit")
+    parser.add_argument("--debug", action="store_true", help=f"override time limit to {DEBUG_TIME}")
+    parser.add_argument("--version", default="", help="nest outputs under <output_dir>/<version>")
+    parser.add_argument("--force", action="store_true", help="allow overwriting existing metrics in output_dir")
+    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                        help="override an option for every selected run; dotted keys for nesting, "
+                             "e.g. params.hold_out_obs_ratio=0.2 (repeatable)")
+    args = parser.parse_args()
+
+    if args.config_file == "-":
+        args.config_file = DEFAULT_CONFIG
+    if not os.path.isfile(args.config_file):
+        sys.exit(f"Config file not found: {args.config_file}")
+
+    overrides = []
+    for kv in args.set:
+        if "=" not in kv:
+            sys.exit(f"--set expects KEY=VALUE, got {kv!r}")
+        key, value = kv.split("=", 1)
+        overrides.append((key.strip(), parse_value(value)))
+
+    runs = resolve_runs(load_yaml(args.config_file), args.config_file, args.filter)
+    if not runs:
+        sys.exit(f"No predict runs in {args.config_file}" + (f" matching '{args.filter}'" if args.filter else ""))
+
+    print(f"{len(runs)} predict run(s) from {args.config_file}"
+          + (" [DRY RUN]" if args.dry_run else "") + (" [DEBUG]" if args.debug else ""))
+    have_sbatch = subprocess.run(["which", "sbatch"], capture_output=True).returncode == 0 if not args.dry_run else True
+    predict_keys = predict_option_keys()
+
+    failures = 0
+    for i, (name, run) in enumerate(runs.items(), 1):
+        for key, value in overrides:
+            set_dotted(run, key, value)
+        job = build_job(name, run, args, predict_keys)
+        cfg = job["cfg"]
+        times = cfg.get("times") or f"{cfg.get('start_time')} .. {cfg.get('end_time') or cfg.get('start_time')}"
+        print(f"\n[{i}] {name}" + (f" -- {cfg['description']}" if cfg.get("description") else ""))
+        print(f"    checkpoint {cfg.get('checkpoint')}")
+        print(f"    times {times}")
+        print(f"    1 GPU, time {job['time']}, output_dir {job['out_dir']}")
+        if job["errors"]:
+            failures += 1
+            for e in job["errors"]:
+                print(f"    ERROR: {e}")
+            continue
+
+        os.makedirs(job["out_dir"], exist_ok=True)  # sbatch needs the -o/-e dir to exist
+        dump_yaml(cfg, job["config_copy"])
+        script_path = os.path.join(job["out_dir"], f"job_predict_{name}.sh")
+        with open(script_path, "w", newline="\n") as f:
+            f.write(job["script"])
+        os.chmod(script_path, 0o755)
+        print(f"    config: {job['config_copy']}")
+        print(f"    job script: {script_path}")
+
+        if args.dry_run:
+            print(f"    [dry run] would run: sbatch {script_path}")
+        elif not have_sbatch:
+            failures += 1
+            print("    ERROR: sbatch not found -- run on a login node, or use --dry-run")
+        else:
+            result = subprocess.run(["sbatch", script_path], cwd=REPO_ROOT, capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"    submitted: {result.stdout.strip()}")
+            else:
+                failures += 1
+                print(f"    ERROR: sbatch failed: {result.stderr.strip()}")
+
+    print(f"\n{len(runs) - failures}/{len(runs)} predict run(s) "
+          + ("prepared" if args.dry_run else "submitted"))
+    sys.exit(1 if failures else 0)
 
 
 if __name__ == "__main__":
