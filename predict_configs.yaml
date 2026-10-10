@@ -114,8 +114,8 @@ predictions:
     params:
       ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
       ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
-    start_time: 2023-02-15T00:00
-    end_time: 2023-02-20T23:00
+    start_time: 2023-03-01T00:00
+    end_time: 2023-03-05T23:00
     time: "01:00:00"
     field_formats: [nc, pt]
 
@@ -127,7 +127,7 @@ predictions:
       ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
       ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
       learn_residual: false          # trained with learn_residual: false
-    start_time: 2023-02-15T00:00
-    end_time: 2023-02-20T23:00
+    start_time: 2023-03-01T00:00
+    end_time: 2023-03-05T23:00
     time: "01:00:00"
     field_formats: [nc, pt]

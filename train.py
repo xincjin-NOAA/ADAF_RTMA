@@ -44,7 +44,7 @@ from ruamel.yaml.comments import CommentedMap as ruamelDict
 from utils.dataloader_multifiles import get_data_loader
 # from utils.logging_utils import log_to_file
 from utils.YParams import YParams
-from utils.misc_functions import set_user_params
+from utils.misc_functions import set_user_params, append_loss_row
 
 #################################
 
@@ -546,6 +546,10 @@ class Trainer:
 
         best_train_loss = 1.0e6
 
+        # Per-epoch loss history, next to the checkpoints. A new run starts the file over; a resume appends.
+        loss_log_path = os.path.join(os.path.dirname(os.path.abspath(self.params.checkpoint_path)), "losses.csv")
+        fresh_loss_log = not self.params.resuming
+
         for epoch in range(self.startEpoch, self.params.max_epochs):
             self.train_sampler.set_epoch(epoch)
             self.valid_sampler.set_epoch(epoch)
@@ -568,6 +572,8 @@ class Trainer:
                 print(f"Training loss: {train_logs['loss_field']}")
                 print(f"Learning rate: {current_lr}")
 
+            valid_time, valid_logs = None, None
+
             # validate one epoch
             if (epoch != 0) and (epoch % self.params.valid_frequency == 0):
                 valid_time, valid_logs = self.validate_one_epoch()
@@ -575,6 +581,19 @@ class Trainer:
                 if self.params.log_to_screen and self.params.world_rank==0: #only print once
                     print(f"Valid time={valid_time: .2f} seconds")
                     print(f"Valid loss={valid_logs['valid_loss_field']}")
+
+            if self.params.world_rank == 0:
+                append_loss_row(loss_log_path, {
+                    "epoch": epoch + 1,
+                    "train_loss": train_logs["loss_field"],
+                    "train_loss_obs": train_logs["loss_field_obs"],
+                    "valid_loss": float(valid_logs["valid_loss_field"]) if valid_logs else "",
+                    "valid_loss_obs": float(valid_logs["valid_loss_field_obs"]) if valid_logs else "",
+                    "lr": current_lr,
+                    "train_time_s": round(tr_time, 2),
+                    "valid_time_s": round(valid_time, 2) if valid_logs else "",
+                }, fresh=fresh_loss_log)
+                fresh_loss_log = False
 
             # LR scheduler
             # (2026-06-05) Does having this operate only on validated epochs cause issues? 

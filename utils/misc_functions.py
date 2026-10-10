@@ -1,8 +1,21 @@
+import os
 import sys
+import csv
 import argparse
 from collections.abc import Mapping
 
 #########################
+
+def append_loss_row(path, row, fresh=False):
+    """Append one epoch's row (a dict) to a CSV loss log, writing the header if the file is new.
+    fresh=True starts the file over (a new run rather than a resume)."""
+    write_header = fresh or not os.path.exists(path)
+    with open(path, "w" if fresh else "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(row))
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
 
 def str2bool(value):
     """argparse type for booleans: 'False' must not become the truthy string 'False'."""
