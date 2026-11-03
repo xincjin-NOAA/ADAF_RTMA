@@ -381,7 +381,12 @@ def main():
     args = parser.parse_args()
 
     cfg = load_predict_config(args.config, args.overrides)
-    logging.basicConfig(level=str(cfg["log_level"]).upper(), format="%(levelname)s %(name)s: %(message)s")
+    log_level = str(cfg["log_level"]).upper()
+    logging.basicConfig(level=log_level, format="%(levelname)s %(name)s: %(message)s")
+    # orca_common logs via its own "ocelot" logger (own handler, level from OCELOT_LOG_LEVEL), which
+    # ignores the root level; set both so the main and any DataLoader worker processes respect log_level.
+    os.environ["OCELOT_LOG_LEVEL"] = log_level
+    logging.getLogger("ocelot").setLevel(log_level)
     times = analysis_times(cfg)
     params = build_params(cfg)
     data_source = getattr(params, "data_source", "netcdf")

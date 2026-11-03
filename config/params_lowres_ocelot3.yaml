@@ -127,8 +127,8 @@ base_config: &BASE_CONFIG
   loss_channel_weights: [1.0, 1.0, 1.0, 1.0]
   resuming: False
   enable_amp: True
-  log_to_screen: True
-  log_level: WARNING    # Python logging level: DEBUG | INFO | WARNING | ERROR (data loaders etc.)
+  log_to_screen: False
+  log_level: ERROR      # Python logging level: DEBUG | INFO | WARNING | ERROR (data loaders etc.)
 
   # ============================================================================
   # NORMALIZATION
