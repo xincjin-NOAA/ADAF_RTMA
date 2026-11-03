@@ -34,7 +34,7 @@ defaults:
   gpus_per_node: 2                   # torchrun ranks per node; also --gres=gpu:N
   cpus_per_task: 24                  # per node (one launcher task per node)
   # mem: "0"                         # "0" = all of the node's memory
-  time: "04:00:00"                   # --debug overrides to 00:30:00
+  time: "08:00:00"                   # --debug overrides to 00:30:00
   # extra_sbatch: []                 # raw sbatch options, e.g. ["--exclusive", "--mail-type=END"]
 
   # --- environment ---
@@ -252,7 +252,7 @@ experiments:
     config_filepath: ./config/params_lowres_ocelot3.yaml
     nodes: 2
     gpus_per_node: 2
-    time: "04:00:00"
+    time: "08:30:00"
     max_epochs: 200
     valid_frequency: 1   
     learn_residual: false
