@@ -49,7 +49,7 @@ base_config: &BASE_CONFIG
   # DATA PATHS AND SPECIFICATIONS
   # ============================================================================
   data_source: "ocelot3" # "netcdf" | "ocelot3"
-  ocelot3_data_dir: "/scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok" # root containing the *.parquet tables
+  ocelot3_data_dir: "/scratch5/purged/Xin.C.Jin/data/v2/diag_urma_ok" # root containing the *.parquet tables
   ocelot3_static_data_dir: "/scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok" # urma2p5_terrain.npy / urma2p5_slmask_nolakes.npz
   ocelot3_delta_time: 1 # hours between bins
   ocelot3_pad_multiple: None # None = auto (1 for arch lowres, patch_size*window_size for flat)
