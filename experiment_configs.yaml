@@ -253,7 +253,7 @@ experiments:
     nodes: 2
     gpus_per_node: 2
     time: "08:30:00"
-    max_epochs: 200
-    valid_frequency: 1   
+    max_epochs: 500
+    valid_frequency: 5   
     learn_residual: false
 
