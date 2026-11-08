@@ -39,7 +39,8 @@ def load_static_grid(static_data_dir):
     Returns
     -------
     terrain_hw : np.ndarray, shape (H, W)
-        Terrain height, in the file's own native 2D shape (not flattened).
+        Terrain height, z-scored over the grid (zero mean, unit std), in the
+        file's own native 2D shape (not flattened).
     slmask_hw : np.ndarray, shape (H, W)
         Land/sea mask (1 = land), same shape/order as ``terrain_hw``.
     grid_shape : tuple(int, int)
@@ -65,6 +66,15 @@ def load_static_grid(static_data_dir):
             "shape must be obtained from elsewhere (e.g. the GRIB source) "
             "and passed in explicitly -- do not guess it."
         )
+
+    # The .npy holds raw heights in meters (urma_ok: ~92-1635 m), while every other
+    # model input arrives z-scored. Z-score the terrain over its own grid so the topo
+    # channel is on the same scale. The stats come from the static file itself, so
+    # training and inference always use the same scaling.
+    terrain_std = terrain.std()
+    if terrain_std == 0:
+        raise ValueError("terrain field is constant; cannot z-score it.")
+    terrain = (terrain - terrain.mean()) / terrain_std
 
     return terrain, slmask, terrain.shape
 

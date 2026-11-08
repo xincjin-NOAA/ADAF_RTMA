@@ -243,8 +243,8 @@ experiments:
     config_filepath: ./config/params_lowres_ocelot3.yaml
     nodes: 2
     gpus_per_node: 2
-    time: "04:00:00"
-    max_epochs: 200
+    time: "08:00:00"
+    max_epochs: 500
     valid_frequency: 5
 
   ocelot3_no_residual:
