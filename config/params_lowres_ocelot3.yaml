@@ -44,19 +44,20 @@ base_config: &BASE_CONFIG
   localsgd_warmup: 0
   sync_epoch_timing: True
   train_sample_fraction: 1.0
+  valid_sample_fraction: 0.01 # fixed, evenly spaced subset of the validation date range
 
   # ============================================================================
   # DATA PATHS AND SPECIFICATIONS
   # ============================================================================
   data_source: "ocelot3" # "netcdf" | "ocelot3"
-  ocelot3_data_dir: "/scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok" # root containing the *.parquet tables
+  ocelot3_data_dir: "/scratch5/purged/Xin.C.Jin/data/v2/diag_urma_ok" # root containing the *.parquet tables
   ocelot3_static_data_dir: "/scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok" # urma2p5_terrain.npy / urma2p5_slmask_nolakes.npz
   ocelot3_delta_time: 1 # hours between bins
   ocelot3_pad_multiple: None # None = auto (1 for arch lowres, patch_size*window_size for flat)
-  ocelot3_train_start_date: "2022-02-01" # start/end must be in the same year
-  ocelot3_train_end_date: "2022-02-20"
-  ocelot3_valid_start_date: "2022-02-21"
-  ocelot3_valid_end_date: "2022-02-28"
+  ocelot3_train_start_date: "2022-01-01" # start/end must be in the same year
+  ocelot3_train_end_date: "2022-12-31"
+  ocelot3_valid_start_date: "2023-01-01"
+  ocelot3_valid_end_date: "2023-12-31"
   checkpoint_path: "./checkpoint"
   best_checkpoint_path: "./best_checkpoint"
   resume_checkpoint_path: None #To be provided only when resuming from checkpoint. Must include best_ckpt.tar or ckpt.tar at the end of the path!
@@ -127,7 +128,7 @@ base_config: &BASE_CONFIG
   resuming: False
   enable_amp: True
   log_to_screen: True
-  log_level: WARNING    # Python logging level: DEBUG | INFO | WARNING | ERROR (data loaders etc.)
+  log_level: ERROR      # Python logging level: DEBUG | INFO | WARNING | ERROR (data loaders etc.)
 
   # ============================================================================
   # NORMALIZATION

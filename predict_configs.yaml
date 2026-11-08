@@ -89,11 +89,11 @@ predictions:
   # NetCDF + GOES
   # ==========================================================================
 
-  goes_lowres_test:
-    description: "goes_lowres best checkpoint on 2023 test data"
-    checkpoint: training_runs/goes_lowres/best_ckpt.tar
-    start_time: 2023-06-13T00:00
-    end_time: 2023-06-13T23:00
+  # goes_lowres_test:
+  #   description: "goes_lowres best checkpoint on 2023 test data"
+  #   checkpoint: training_runs/goes_lowres/best_ckpt.tar
+  #   start_time: 2023-06-13T00:00
+  #   end_time: 2023-06-13T23:00
 
   # goes_base:
   #   description: "goes_base (experiment_configs.yaml) best checkpoint, June 2023"
@@ -110,24 +110,26 @@ predictions:
   ocelot3_base:
     description: "ocelot3_base best checkpoint on held-out days"
     config_filepath: ./config/params_lowres_ocelot3.yaml
-    checkpoint: training_runs/ocelot3_base/best_ckpt.tar
+    checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_base/new_ok/best_ckpt.tar
     params:
-      ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+      ocelot3_data_dir: /scratch5/purged/Xin.C.Jin/data/v2/diag_urma_ok
       ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
-    start_time: 2023-03-01T00:00
-    end_time: 2023-03-05T23:00
+    start_time: 2023-01-01T00:00
+    end_time: 2023-12-31T23:00
+    hour_step: 43                    # ~204 times; 43 is coprime with 24, so all hours of day are sampled
     time: "01:00:00"
     field_formats: [nc, pt]
 
   ocelot3_no_residual:
     description: "ocelot3_no_residual best checkpoint on held-out days"
     config_filepath: ./config/params_lowres_ocelot3.yaml
-    checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_no_residual/best_ckpt.tar
+    checkpoint: /scratch3/NCEPDEV/da/Xin.C.Jin/git/adaf_rtma/training_runs/ocelot3_no_residual/new_ok/best_ckpt.tar
     params:
-      ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+      ocelot3_data_dir: /scratch5/purged/Xin.C.Jin/data/v2/diag_urma_ok
       ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
       learn_residual: false          # trained with learn_residual: false
-    start_time: 2023-03-01T00:00
-    end_time: 2023-03-05T23:00
+    start_time: 2023-01-01T00:00
+    end_time: 2023-12-31T23:00
+    hour_step: 43                    # ~204 times; 43 is coprime with 24, so all hours of day are sampled
     time: "01:00:00"
     field_formats: [nc, pt]

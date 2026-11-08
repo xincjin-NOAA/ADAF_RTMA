@@ -28,7 +28,7 @@ env_vars:
 
 # --- training (overrides of config_filepath) ---
 config_filepath: ./config/params_lowres_ocelot3.yaml
-ocelot3_data_dir: /scratch3/NCEPDEV/stmp/Xin.C.Jin/data/ocelot/data_v6/urma_ok
+ocelot3_data_dir: /scratch5/purged/Xin.C.Jin/data/v2/diag_urma_ok
 ocelot3_static_data_dir: /scratch3/NCEPDEV/da/Xin.C.Jin/my_data/urma_ok
 ocelot3_train_start_date: "2022-02-01"
 ocelot3_train_end_date: "2022-03-31"

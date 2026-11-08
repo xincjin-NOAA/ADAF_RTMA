@@ -636,7 +636,12 @@ if __name__ == "__main__":
     params = YParams(args.config_filepath)
     params.override_from_cli(args)
 
-    logging.basicConfig(level=str(params.log_level).upper(), format="%(levelname)s %(name)s: %(message)s")
+    log_level = str(params.log_level).upper()
+    logging.basicConfig(level=log_level, format="%(levelname)s %(name)s: %(message)s")
+    # orca_common logs via its own "ocelot" logger (own handler, level from OCELOT_LOG_LEVEL), which
+    # ignores the root level; set both so main and DataLoader worker processes respect log_level.
+    os.environ["OCELOT_LOG_LEVEL"] = log_level
+    logging.getLogger("ocelot").setLevel(log_level)
 
     # Get SLURM info for DDP and set params
     params["local_rank"] = int(os.environ.get("LOCAL_RANK", 0))

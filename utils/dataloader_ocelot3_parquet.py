@@ -32,10 +32,12 @@ Design decisions carried over unchanged from adaf:
   * Schema is the aardvark-branch obs_config_urma_ok.py (surface_obs_t/u/v/q,
     spfh_2maboveground), confirmed against the real urma_ok data.
 """
+import logging
+
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader, Dataset, DistributedSampler, RandomSampler
+from torch.utils.data import DataLoader, Dataset, DistributedSampler, RandomSampler, Subset
 
 try:
     from orca_common.dataset_timeseries import ParquetDataManager, generate_binned_timestamp_list
@@ -68,6 +70,15 @@ STATE_FEATURE_NAMES = {
     "v10": "vgrd_10maboveground",
 }
 CONVENTIONAL_INSTRUMENTS = {"t": "diag_t", "q": "diag_q", "u10": "diag_u", "v10": "diag_v"}
+
+# How many consecutive unreadable bins __getitem__ steps past before giving up.
+MAX_BAD_BIN_SKIPS = 24
+
+logger = logging.getLogger(__name__)
+
+
+class MissingBinData(KeyError):
+    """A bin's ges or anal state data couldn't be loaded."""
 
 ####################
 
@@ -190,7 +201,10 @@ class Ocelot3ParquetDataset(Dataset):
     ###
 
     def _state_grid_and_mask(self, loader, state_key, bin_name):
-        inst = loader.get_data_for_bin(bin_name)["state"][state_key]
+        inst = loader.get_data_for_bin(bin_name).get("state", {}).get(state_key)
+        if inst is None:
+            # orca_common drops an instrument it couldn't read (e.g. a partition missing lat/lon)
+            raise MissingBinData(f"no '{state_key}' data for bin {bin_name}")
         feats = inst["features_norm"].numpy()           # (N, target_dim), z-scored
         valid = inst["features_valid_mask"].numpy()     # (N, target_dim), bool
         grids, masks = [], []
@@ -254,7 +268,19 @@ class Ocelot3ParquetDataset(Dataset):
     ###
 
     def __getitem__(self, idx):
-        bin_name = self.binned_samples[idx]
+        # A bin with unreadable ges/anal is replaced by the next readable one, so a few bad
+        # partitions don't kill the run (the default collate can't take a None sample).
+        n = len(self.binned_samples)
+        for k in range(min(n, MAX_BAD_BIN_SKIPS + 1)):
+            bin_name = self.binned_samples[(idx + k) % n]
+            try:
+                return self._load_bin(bin_name)
+            except MissingBinData as e:
+                logger.warning("Skipping bin: %s", e)
+        raise RuntimeError(f"No readable ges/anal data in {MAX_BAD_BIN_SKIPS + 1} consecutive bins "
+                           f"starting at {self.binned_samples[idx]} -- check data_dir={self.data_dir!r}.")
+
+    def _load_bin(self, bin_name):
         h, w = self.grid_shape
 
         inp_pred, field_mask = self._state_grid_and_mask(self.loader, "ges", bin_name)
@@ -286,10 +312,20 @@ def get_data_loader_ocelot3(params, date_range, distributed, train, fractional=F
     """Same return contract as dataloader_multifiles_ges_goes.get_data_loader.
 
     date_range: (start_date, end_date) strings. fractional=True applies
-    params.train_sample_fraction (the training split only).
+    params.train_sample_fraction (the training split only). Otherwise
+    params.valid_sample_fraction < 1 keeps a fixed, evenly spaced subset of the
+    bins (the same every epoch, so validation losses stay comparable).
     """
     start_date, end_date = date_range
     dataset = Ocelot3ParquetDataset(params, start_date, end_date, train)
+
+    valid_fraction = float(getattr(params, "valid_sample_fraction", 1.0))
+    if not fractional and valid_fraction < 1.0:
+        if valid_fraction <= 0:
+            raise ValueError(f"valid_sample_fraction must be in (0, 1], got {valid_fraction}")
+        n_keep = max(1, int(len(dataset) * valid_fraction))
+        indices = np.linspace(0, len(dataset) - 1, n_keep).round().astype(int)
+        dataset = Subset(dataset, np.unique(indices).tolist())
 
     sample_fraction = float(getattr(params, "train_sample_fraction", 1.0)) if fractional else 1.0
     seed = int(getattr(params, "seed", 0))
